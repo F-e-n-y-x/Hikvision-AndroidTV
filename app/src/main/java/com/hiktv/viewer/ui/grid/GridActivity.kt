@@ -119,13 +119,10 @@ class GridActivity : AppCompatActivity() {
         setLoading(false)
         binding.emptyPanel.visibility = View.GONE
         binding.recycler.visibility = View.VISIBLE
-        // Grid software-decodes by default (Balanced): hardware-decoding several H.265 sub-streams
-        // at once can overrun a weak SoC. BUT on Amlogic the software decoder can't keep up and lags
-        // seconds behind, while its H.264 hardware decoder is light + realtime — so Amlogic grid uses
-        // hardware (sub-streams are H.264 after "Optimize live", which avoids the H.265 green bug).
-        // The explicit "Hardware" mode (1) opts in everywhere; "Software" (2) forces software.
-        adapter.hardware = store.decoderMode == 1 ||
-            (com.hiktv.viewer.util.DeviceQuirks.isAmlogic && store.decoderMode != 2)
+        // Grid software-decodes by default. NOTE on Amlogic: hardware decode greens on the
+        // multi-tile GL path (only the single-surface overlay is clean, and that can't show 4
+        // tiles), so the grid MUST stay software there. Only explicit "Hardware" mode (1) opts in.
+        adapter.hardware = store.decoderMode == 1
         columns = columnsFor(cams.size)
         (binding.recycler.layoutManager as GridLayoutManager).spanCount = columns
         adapter.submit(cams)

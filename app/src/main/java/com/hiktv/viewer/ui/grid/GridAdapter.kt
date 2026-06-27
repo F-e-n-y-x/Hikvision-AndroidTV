@@ -137,7 +137,7 @@ class GridAdapter(
             stream = CameraStream(
                 context = context,
                 url = url,
-                networkCachingMs = 150,    // low latency for a realtime wall (LAN)
+                networkCachingMs = 100,    // low latency for a realtime wall (LAN)
                 muted = true,
                 hardware = hardware
             ) { state ->
