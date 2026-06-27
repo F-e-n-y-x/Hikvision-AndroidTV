@@ -144,8 +144,8 @@ class PlaybackActivity : AppCompatActivity() {
         val url = RtspUrls.playback(nvr, camera, Date(fromPseudo), Date(windowEnd))
         val hw = NvrStore(this).decoderMode != 2
         val mp = MediaPlayer(PlayerEngine.get(this))
-        // TextureView so popups/overlays don't black out the video.
-        mp.attachViews(binding.videoLayout, null, false, true)
+        // SurfaceView (hardware overlay) — much smoother for high-res H.265 recordings on weak TVs.
+        mp.attachViews(binding.videoLayout, null, false, false)
         mp.setEventListener { e ->
             when (e.type) {
                 MediaPlayer.Event.Playing -> binding.status.post {
@@ -165,9 +165,9 @@ class PlaybackActivity : AppCompatActivity() {
         }
         val media = Media(PlayerEngine.get(this), Uri.parse(url)).apply {
             setHWDecoderEnabled(hw, false)
-            // Recordings don't need ultra-low latency; a moderate cache + frame-dropping make
-            // playback smooth on weak TV SoCs instead of stuttering, while still starting fast.
-            addOption(":network-caching=800")
+            // Recordings don't need low latency; a deep cache absorbs bursty RTSP delivery and
+            // frame-dropping keeps the picture moving on weak SoCs instead of stuttering.
+            addOption(":network-caching=1800")
             addOption(":rtsp-tcp")
             addOption(":clock-jitter=0")
             addOption(":clock-synchro=0")

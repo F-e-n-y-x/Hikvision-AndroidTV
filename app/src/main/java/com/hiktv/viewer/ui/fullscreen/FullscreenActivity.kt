@@ -89,8 +89,10 @@ class FullscreenActivity : AppCompatActivity() {
             url = url,
             networkCachingMs = 150,
             muted = false,                // audio decoded; muted via volume so it can be toggled
-            hardware = hw,
-            useTextureView = true         // survives dialogs/overlays without going black
+            hardware = hw
+            // SurfaceView (default): the lightweight hardware-overlay path — much smoother on
+            // weak TV GPUs. Popups render over it fine; black-on-return is handled by the
+            // onStop/onStart release-restart below.
         ) { state ->
             binding.status.post {
                 binding.status.visibility =
