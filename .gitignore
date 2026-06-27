@@ -1,0 +1,19 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+/app/build/
+
+# Signing material — never commit
+keystore.properties
+*.keystore
+*.jks
+
+# Test screenshots contain real camera footage — keep them out of the repo
+.claude/skills/run-hik-tv-viewer/shots/

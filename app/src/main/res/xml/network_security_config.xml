@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This is a LAN app that talks to an NVR over plain HTTP (ISAPI on port 80) and RTSP.
+  Android 9+ blocks cleartext by default, so we explicitly allow it. We also trust
+  user-installed CAs so a self-signed NVR cert imported on the TV works over HTTPS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

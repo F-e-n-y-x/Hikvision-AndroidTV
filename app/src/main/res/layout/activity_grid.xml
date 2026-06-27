@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg">
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="0dp"
+        android:clipToPadding="false"
+        android:descendantFocusability="afterDescendants" />
+
+    <ProgressBar
+        android:id="@+id/progress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/alertBanner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/bg_alert"
+        android:paddingHorizontal="18dp"
+        android:paddingVertical="9dp"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp"
+        android:fontFamily="sans-serif-medium"
+        android:visibility="gone" />
+
+    <!-- Empty / first-run state -->
+    <LinearLayout
+        android:id="@+id/emptyPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingHorizontal="40dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="104dp"
+            android:layout_height="104dp"
+            android:background="@drawable/logo_badge"
+            android:padding="12dp"
+            android:src="@drawable/app_logo"
+            android:scaleType="fitCenter"
+            android:contentDescription="@string/app_name" />
+
+        <TextView
+            android:id="@+id/emptyTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="No cameras yet"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/emptySubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:maxWidth="520dp"
+            android:text="Tap “Auto-detect” to scan your NVR for cameras."
+            android:textColor="@color/text_secondary"
+            android:textSize="15sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnEmptyAutoDetect"
+            android:layout_width="280dp"
+            android:layout_height="50dp"
+            android:layout_marginTop="24dp"
+            android:text="Auto-detect cameras"
+            app:cornerRadius="12dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnEmptySettings"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="280dp"
+            android:layout_height="50dp"
+            android:layout_marginTop="10dp"
+            android:text="Settings"
+            android:textColor="@color/text_primary"
+            app:cornerRadius="12dp"
+            app:strokeColor="#33FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="Tip: long-press ◄ on the remote anytime to open this menu"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+</FrameLayout>

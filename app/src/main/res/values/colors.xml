@@ -1,0 +1,23 @@
+<resources>
+    <!-- Premium minimalist dark palette + single lime brand accent -->
+    <color name="bg">#0B0E11</color>
+    <color name="surface">#14181E</color>
+    <color name="surface_2">#1C222A</color>
+    <color name="tile">#000000</color>
+    <color name="divider">#232A33</color>
+
+    <color name="accent">#D0DA21</color>
+    <color name="accent_dim">#97A018</color>
+    <color name="on_accent">#10130A</color>
+    <!-- softer, semi-transparent lime for focus outlines so they don't overpower -->
+    <color name="focus_ring">#8FD0DA21</color>
+
+    <color name="text_primary">#F2F4F7</color>
+    <color name="text_secondary">#8A93A2</color>
+    <color name="text_tertiary">#5B6573</color>
+
+    <color name="online">#34C759</color>
+    <color name="offline">#6E7681</color>
+    <color name="motion">#FF6B6B</color>
+    <color name="scrim">#B3000000</color>
+</resources>

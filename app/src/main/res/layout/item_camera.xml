@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="200dp"
+    android:layout_margin="1dp"
+    android:background="@color/tile"
+    android:foreground="@drawable/tile_focus"
+    android:focusable="true"
+    android:focusableInTouchMode="false">
+
+    <org.videolan.libvlc.util.VLCVideoLayout
+        android:id="@+id/videoLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- instant snapshot preview shown until the live stream's first frame arrives -->
+    <ImageView
+        android:id="@+id/preview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:visibility="gone"
+        android:contentDescription="@string/app_name" />
+
+    <!-- connecting / offline state -->
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp"
+        android:text="Connecting…" />
+
+    <!-- camera name + online dot, bottom-right, on a semi-transparent label -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="6dp"
+        android:background="@drawable/bg_name_pill"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="9dp"
+        android:paddingVertical="4dp">
+
+        <View
+            android:id="@+id/onlineDot"
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/dot"
+            android:backgroundTint="@color/online" />
+
+        <TextView
+            android:id="@+id/cameraName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:alpha="0.92"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-medium"
+            android:text="Camera" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/motionBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="8dp"
+        android:background="@drawable/bg_motion"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="3dp"
+        android:text="MOTION"
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:fontFamily="sans-serif-medium"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+</FrameLayout>

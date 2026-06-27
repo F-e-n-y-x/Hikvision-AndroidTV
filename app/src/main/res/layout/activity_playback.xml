@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <org.videolan.libvlc.util.VLCVideoLayout
+        android:id="@+id/videoLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="16dp"
+        android:background="@drawable/bg_name_pill"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="5dp"
+        android:textColor="@color/text_primary"
+        android:fontFamily="sans-serif-medium"
+        android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:textColor="@color/text_secondary"
+        android:textSize="16sp" />
+
+    <!-- Compact playhead time shown once the full bar minimizes during playback. -->
+    <TextView
+        android:id="@+id/compactTime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="16dp"
+        android:background="@drawable/bg_pill"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="5dp"
+        android:textColor="@color/accent"
+        android:fontFamily="sans-serif-medium"
+        android:textSize="15sp"
+        android:visibility="gone" />
+
+    <!-- bottom control bar with the timeline -->
+    <LinearLayout
+        android:id="@+id/controlBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:background="#CC0B0E11"
+        android:paddingHorizontal="28dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="14dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/playheadTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/accent"
+                android:textSize="22sp"
+                android:fontFamily="sans-serif-medium"
+                android:text="--:--" />
+
+            <TextView
+                android:id="@+id/dayLabel"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/hint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:text="◀ ▶ scrub  ·  OK play/pause  ·  ▲▼ ±1h  ·  MENU bar" />
+        </LinearLayout>
+
+        <com.hiktv.viewer.ui.playback.TimelineView
+            android:id="@+id/timeline"
+            android:layout_width="match_parent"
+            android:layout_height="62dp"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+</FrameLayout>
