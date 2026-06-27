@@ -7,7 +7,7 @@ live. It opens straight into the camera wall — no menus to dig through. It wor
 It is built to run smoothly on cheap, low-power TVs and TV sticks, and is designed for a normal
 remote (D-pad + OK + Back + Volume — no special remote needed).
 
-> **Latest version: 2.3.0**
+> **Latest version: 2.3.5**
 
 ---
 
@@ -139,13 +139,20 @@ If your cameras record in **H.265**, several at once can be heavy for a cheap TV
 (full-screen / recording quality is unchanged). If video ever looks broken, try
 **Settings → Video decoding → Software**.
 
-### Green or corner-cropped video (Amlogic / Mi Box)
+### Green video / Amlogic (Mi Box, S905) boxes
 
-Some TV chips (Amlogic — Mi Box, S905 family) render hardware **H.265** as a green or corner-cropped
-picture; others (e.g. Xiaomi MiTV) need the opposite. The app **auto-detects Amlogic** and uses the
-right render path, so it should just work. If a device still shows green or laggy full-screen video,
-flip **Settings → Video rendering** between **Compatible** and **Direct** — it's a per-TV setting and
-doesn't affect your other TVs.
+TV chips disagree on hardware video: Xiaomi **MiTV** (MediaTek) greens with zero-copy rendering and
+needs the copy path; **Amlogic** (Mi Box, S905) is the opposite and also crashes in the Mali GL path.
+The app **auto-detects the chip** and picks the right path, so it should just work:
+
+- **MiTV** — copy render path (fixes green).
+- **Amlogic** — **single-surface screens** (full screen, playback, zoom/PTZ) use the direct hardware
+  **overlay** → clean, realtime, and crash-free. The **multi-camera grid** stays on **software**
+  decode, because Amlogic greens *any* hardware video on the multi-tile path (only one hardware
+  overlay plane exists). So on a Mi Box, full screen is realtime while the grid is a touch softer/heavier.
+
+A manual **Settings → Video rendering** (Compatible ↔ Direct) override exists per-TV if any other chip
+ever misbehaves. If the grid is heavy on a weak box, run **Settings → Optimize live (smooth)**.
 
 ---
 
@@ -185,9 +192,10 @@ keyPassword=YOUR_PASSWORD
   **ONVIF** (SOAP) for direct-to-camera PTZ; **EZVIZ cloud** for EZVIZ PTZ.
 - Grid uses each camera's small **sub-stream**; full screen uses the high-quality main stream.
   Streams are released when you leave a screen so a weak TV never decodes more than it must.
-- **Per-chip render path**: MediaCodec "direct rendering" greens on some chips (MiTV → copy path)
-  and is *required* on others (Amlogic / Mi Box → zero-copy). `DeviceQuirks` auto-detects Amlogic;
-  a manual **Video rendering** setting overrides it per TV.
+- **Per-chip render path** (`DeviceQuirks` auto-detects Amlogic): MiTV uses the MediaCodec copy path
+  (`:no-mediacodec-dr`); Amlogic uses zero-copy + the no-GL `:vout=android_display` overlay on
+  single-surface screens (avoids the Mali green/SIGSEGV) and software decode for the multi-tile grid.
+  A manual **Video rendering** setting overrides it per TV.
 
 ```text
 app/src/main/java/com/hiktv/viewer/
