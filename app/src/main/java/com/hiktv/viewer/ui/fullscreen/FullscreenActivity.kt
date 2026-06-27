@@ -81,15 +81,19 @@ class FullscreenActivity : AppCompatActivity() {
 
     private fun startStream() {
         val nvr = Session.nvr ?: return
+        val store = NvrStore(this)
         val url = RtspUrls.live(nvr, camera, sub = false)
-        val hw = NvrStore(this).decoderMode != 2     // 2 = Software-only
+        val hw = store.decoderMode != 2     // 2 = Software-only
         stream?.release()
         stream = CameraStream(
             context = this,
             url = url,
             networkCachingMs = 150,
             muted = false,                // audio decoded; muted via volume so it can be toggled
-            hardware = hw
+            hardware = hw,
+            // Amlogic needs zero-copy rendering (the copy path leaves the surface green); the
+            // MiTV needs the copy path. directRender captures the user toggle + Amlogic auto.
+            directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic
             // SurfaceView (default): the lightweight hardware-overlay path — much smoother on
             // weak TV GPUs. Popups render over it fine; black-on-return is handled by the
             // onStop/onStart release-restart below.

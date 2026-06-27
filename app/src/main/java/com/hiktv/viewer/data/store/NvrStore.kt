@@ -96,6 +96,15 @@ class NvrStore(context: Context) {
         get() = prefs.getInt(K_DECODER, 0)
         set(value) = prefs.edit().putInt(K_DECODER, value).apply()
 
+    /**
+     * Video render path. false (default) = compatible copy path (`:no-mediacodec-dr`) which fixes
+     * all-green H.265 on chips like the Xiaomi MiTV. true = direct/zero-copy rendering, which is
+     * far faster and is what laggy/crashing boxes (e.g. Amlogic Mi Box) need. Per-device.
+     */
+    var directRender: Boolean
+        get() = prefs.getBoolean(K_DIRECT_RENDER, false)
+        set(value) = prefs.edit().putBoolean(K_DIRECT_RENDER, value).apply()
+
     /** Channels the user wants motion/area alerts for (banner + notification). Empty = none. */
     var alertChannels: Set<Int>
         get() = prefs.getString(K_ALERTS, "").orEmpty()
@@ -199,6 +208,7 @@ class NvrStore(context: Context) {
         private const val K_CAMS = "cameras"
         private const val K_COLS = "grid_cols"
         private const val K_DECODER = "decoder_mode"
+        private const val K_DIRECT_RENDER = "direct_render"
         private const val K_ALERTS = "alert_channels"
     }
 }

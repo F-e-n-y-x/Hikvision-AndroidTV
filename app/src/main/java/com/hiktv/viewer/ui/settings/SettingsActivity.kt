@@ -46,6 +46,7 @@ class SettingsActivity : AppCompatActivity() {
             Row("Set number of cameras", "Manually define channels 1..N") { manualCount() },
             Row("Grid layout", layoutLabel()) { chooseLayout() },
             Row("Video decoding", decoderLabel()) { chooseDecoder() },
+            Row("Video rendering", renderLabel()) { chooseRender() },
             Row("Optimize live (smooth)", "Set sub-streams to H.264 for a lighter, smoother wall") { optimizeStreams() },
             Row("Alerts", alertsLabel()) { chooseAlerts() },
             Row("Diagnostics", "Check what the NVR returns") { diagnostics() },
@@ -156,6 +157,26 @@ class SettingsActivity : AppCompatActivity() {
             .setTitle("Video decoding")
             .setItems(labels) { _, which ->
                 store.decoderMode = which
+                Session.gridDirty = true
+                finish()
+            }
+            .show()
+    }
+
+    private fun renderLabel(): String =
+        if (store.directRender) "Direct / fast (Amlogic, Mi Box)" else "Compatible (recommended)"
+
+    private fun chooseRender() {
+        val labels = arrayOf(
+            "Compatible — fixes green H.265 video (most TVs, e.g. MiTV)",
+            "Direct / fast — use if fullscreen is laggy, green or crashes (e.g. Mi Box)"
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Video rendering")
+            .setMessage("If full-screen video lags, turns green or crashes on this device, switch " +
+                "to Direct. Set per-TV — it doesn't affect your other TVs.")
+            .setItems(labels) { _, which ->
+                store.directRender = which == 1
                 Session.gridDirty = true
                 finish()
             }

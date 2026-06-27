@@ -142,7 +142,9 @@ class PlaybackActivity : AppCompatActivity() {
         binding.status.visibility = View.VISIBLE
         binding.status.text = "Loading…"
         val url = RtspUrls.playback(nvr, camera, Date(fromPseudo), Date(windowEnd))
-        val hw = NvrStore(this).decoderMode != 2
+        val store = NvrStore(this)
+        val hw = store.decoderMode != 2
+        val directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic
         val mp = MediaPlayer(PlayerEngine.get(this))
         // SurfaceView (hardware overlay) — much smoother for high-res H.265 recordings on weak TVs.
         mp.attachViews(binding.videoLayout, null, false, false)
@@ -165,7 +167,7 @@ class PlaybackActivity : AppCompatActivity() {
         }
         val media = Media(PlayerEngine.get(this), Uri.parse(url)).apply {
             setHWDecoderEnabled(hw, false)
-            if (hw) addOption(":no-mediacodec-dr")   // avoid all-green frames on H.265 TV chips
+            if (hw && !directRender) addOption(":no-mediacodec-dr")   // copy path: green-fix on MiTV
             // Recordings don't need low latency; a deep cache absorbs bursty RTSP delivery and
             // frame-dropping keeps the picture moving on weak SoCs instead of stuttering.
             addOption(":network-caching=1800")

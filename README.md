@@ -39,16 +39,18 @@ remote (D-pad + OK + Back + Volume — no special remote needed).
 
 ## First-time setup
 
-When you open the app the first time, enter your NVR details:
+The first launch is a simple **TV wizard**. From the welcome screen pick:
 
-1. **NVR IP address** (e.g. `192.168.1.100`). Your TV must be on the **same network** as the NVR.
-2. **HTTP port** — usually `80`.
-3. **RTSP port** — usually `554`.
-4. **Username / Password** — an NVR account with Live View + Playback + PTZ permission.
-5. Press **Connect**.
+- **Set up new connection** — a 2-step form:
+  1. **Server** — NVR IP address (e.g. `192.168.1.100`), HTTP port (usually `80`), RTSP port
+     (usually `554`). Your TV must be on the **same network** as the NVR.
+  2. **Sign in** — an NVR username/password with Live View + Playback + PTZ permission → **Connect**.
+- **Restore from backup** — if you have a backup file (see below), pick it from the list (or
+  **Browse files…**) to bring back all your settings instantly. Grant the storage permission when asked.
 
-On the NVR (one-time, in its web page): enable **ISAPI / Hikvision-CGI**, use an account with
-**Live View + Playback + PTZ**, and make sure the **RTSP port (554)** is open.
+BACK steps the wizard back a page. On the NVR (one-time, in its web page): enable
+**ISAPI / Hikvision-CGI**, use an account with **Live View + Playback + PTZ**, and make sure the
+**RTSP port (554)** is open.
 
 ---
 
@@ -118,11 +120,15 @@ For a true ONVIF camera (e.g. a Hikvision PT camera), use **"Direct camera conne
 
 ## Backup & Restore
 
-So you never type everything again:
+So you never type everything again — the backup captures **every setting** (NVR, cameras, alerts,
+PTZ / EZVIZ account + serials, layout) so a restored device is identical:
 
-- **Settings → Backup settings** writes everything to **Downloads/HikTVViewer_backup.json**
-  (no permission needed; it survives an uninstall).
-- **Settings → Restore settings** reads it back and reconnects.
+- **Settings → Backup settings** writes to **Downloads/HikTVViewer_backup.json**. It asks whether
+  to **protect it with a PIN** (AES-encrypted) or save it plain. The file survives an uninstall.
+- **Restore** — either **Settings → Restore settings**, or the **Restore from backup** button on
+  the first-run wizard. If the backup is PIN-encrypted you'll be asked for the PIN.
+- ⚠️ A non-encrypted backup contains your passwords in plain text — keep the file private. A
+  forgotten PIN on an encrypted backup can't be recovered.
 
 ---
 
@@ -132,6 +138,14 @@ If your cameras record in **H.265**, several at once can be heavy for a cheap TV
 **Settings → "Optimize live (smooth)"** sets each camera's grid sub-stream to **H.264 @ 15 fps**
 (full-screen / recording quality is unchanged). If video ever looks broken, try
 **Settings → Video decoding → Software**.
+
+### Green or corner-cropped video (Amlogic / Mi Box)
+
+Some TV chips (Amlogic — Mi Box, S905 family) render hardware **H.265** as a green or corner-cropped
+picture; others (e.g. Xiaomi MiTV) need the opposite. The app **auto-detects Amlogic** and uses the
+right render path, so it should just work. If a device still shows green or laggy full-screen video,
+flip **Settings → Video rendering** between **Compatible** and **Direct** — it's a per-TV setting and
+doesn't affect your other TVs.
 
 ---
 
@@ -171,7 +185,9 @@ keyPassword=YOUR_PASSWORD
   **ONVIF** (SOAP) for direct-to-camera PTZ; **EZVIZ cloud** for EZVIZ PTZ.
 - Grid uses each camera's small **sub-stream**; full screen uses the high-quality main stream.
   Streams are released when you leave a screen so a weak TV never decodes more than it must.
-- On cheap H.265 TV chips, MediaCodec "direct rendering" is disabled to avoid green frames.
+- **Per-chip render path**: MediaCodec "direct rendering" greens on some chips (MiTV → copy path)
+  and is *required* on others (Amlogic / Mi Box → zero-copy). `DeviceQuirks` auto-detects Amlogic;
+  a manual **Video rendering** setting overrides it per TV.
 
 ```text
 app/src/main/java/com/hiktv/viewer/
@@ -185,8 +201,12 @@ app/src/main/java/com/hiktv/viewer/
 │  ├─ ezviz/EzvizCloud.kt       EZVIZ cloud login + PTZ + device list
 │  └─ ptz/PtzController.kt      one PTZ interface (NVR / ISAPI / ONVIF / EZVIZ cloud)
 ├─ player/{PlayerEngine,CameraStream}.kt   shared LibVLC + one stream per surface
+├─ util/
+│  ├─ DeviceQuirks.kt           per-chip workarounds (Amlogic render path)
+│  ├─ BackupManager.kt          read/write the backup file in Downloads
+│  └─ BackupCrypto.kt           optional PIN (AES-GCM) backup encryption
 └─ ui/
-   ├─ setup/         first-run connection screen
+   ├─ setup/         first-run wizard (welcome / server / sign-in / restore picker)
    ├─ grid/          live camera wall
    ├─ fullscreen/    one camera, switch with ◀ ▶
    ├─ camera/        per-camera settings page
@@ -200,12 +220,15 @@ app/src/main/java/com/hiktv/viewer/
 ## Troubleshooting
 
 - **"No cameras found"** — the NVR account lacks Live View permission, or ISAPI is off.
-- **A tile is black/green** — green frames are fixed in 2.3.0; if a tile stays black the camera is
-  offline or its sub-stream is disabled.
+- **Green / corner-cropped full-screen video** — toggle **Settings → Video rendering**
+  (Compatible ↔ Direct). Amlogic/Mi Box is auto-set to Direct; if a chip still misbehaves, switch it.
+- **A tile stays black** — that camera is offline or its sub-stream is disabled.
 - **EZVIZ PTZ doesn't move** — open the camera → **Test PTZ connection**; use your EZVIZ
   **account** login (not the device verification code), make sure the serial is right, and 2FA is off.
 - **Video glitches / TV struggles** — run **Settings → Optimize live (smooth)**, or set
   **Video decoding → Software**.
+- **Restore button missing on first boot** — grant the storage permission when prompted (it's
+  needed to read the backup file); or restore later via **Settings → Restore settings**.
 
 ---
 

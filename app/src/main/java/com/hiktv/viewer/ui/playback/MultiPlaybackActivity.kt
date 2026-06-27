@@ -187,7 +187,9 @@ class MultiPlaybackActivity : AppCompatActivity() {
     private fun playAllFrom(fromPseudo: Long) {
         val nvr = Session.nvr ?: return
         releasePlayers()
-        val hw = NvrStore(this).decoderMode != 2
+        val store = NvrStore(this)
+        val hw = store.decoderMode != 2
+        val directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic
         playFrom = fromPseudo
         anchorElapsed = SystemClock.elapsedRealtime()
         playing = true
@@ -198,7 +200,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
             mp.attachViews(cells[i], null, false, false)
             val media = Media(PlayerEngine.get(this), Uri.parse(url)).apply {
                 setHWDecoderEnabled(hw, false)
-                if (hw) addOption(":no-mediacodec-dr")   // avoid all-green frames on H.265 TV chips
+                if (hw && !directRender) addOption(":no-mediacodec-dr")   // copy path: green-fix on MiTV
                 addOption(":network-caching=1500")
                 addOption(":rtsp-tcp")
                 addOption(":drop-late-frames")

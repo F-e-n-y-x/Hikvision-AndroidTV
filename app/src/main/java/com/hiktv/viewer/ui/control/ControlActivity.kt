@@ -103,8 +103,9 @@ class ControlActivity : AppCompatActivity() {
 
     private fun startStream() {
         val nvr = Session.nvr ?: return
+        val store = NvrStore(this)
         val url = RtspUrls.live(nvr, camera, sub = false)
-        val hw = NvrStore(this).decoderMode != 2
+        val hw = store.decoderMode != 2
         stream?.release()
         stream = CameraStream(
             context = this,
@@ -112,7 +113,8 @@ class ControlActivity : AppCompatActivity() {
             networkCachingMs = 250,    // low latency so PTZ feels responsive
             muted = true,
             hardware = hw,
-            useTextureView = true       // required for digital zoom + pan transforms
+            useTextureView = true,      // required for digital zoom + pan transforms
+            directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic
             // highQuality off: keep frame-dropping so PTZ/video stays smooth on weak chips.
             // (Hardware decode does deblocking anyway, so this doesn't cost real detail.)
         ) { state ->

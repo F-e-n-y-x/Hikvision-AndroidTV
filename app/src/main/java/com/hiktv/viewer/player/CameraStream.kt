@@ -28,6 +28,7 @@ class CameraStream(
     private val hardware: Boolean = true,
     private val useTextureView: Boolean = false,
     private val highQuality: Boolean = false,
+    private val directRender: Boolean = false,
     private val onState: (State) -> Unit = {}
 ) {
 
@@ -84,8 +85,9 @@ class CameraStream(
             setHWDecoderEnabled(hardware, false)
             // Disable MediaCodec direct (zero-copy) rendering: on many cheap H.265 TV chips the
             // DR path emits all-green frames. The copy path is slightly heavier but renders
-            // correctly, and is required for TextureView transforms (zoom/pan) too.
-            if (hardware) addOption(":no-mediacodec-dr")
+            // correctly. Some chips (Amlogic Mi Box) are the opposite — the copy path is too slow
+            // and crashes — so [directRender] lets those devices keep zero-copy rendering.
+            if (hardware && !directRender) addOption(":no-mediacodec-dr")
             addOption(":network-caching=$networkCachingMs")
             addOption(":rtsp-tcp")
             addOption(":clock-jitter=0")
