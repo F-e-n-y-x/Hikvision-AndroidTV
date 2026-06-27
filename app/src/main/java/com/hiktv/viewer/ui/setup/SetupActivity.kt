@@ -43,6 +43,32 @@ class SetupActivity : AppCompatActivity() {
         store.load()?.let { prefill(it) }
         binding.btnConnect.setOnClickListener { onConnect() }
         binding.hostEdit.requestFocus()
+        offerRestoreIfAvailable()
+    }
+
+    /** On a fresh install, if a settings backup exists in Downloads, offer one-tap restore. */
+    private fun offerRestoreIfAvailable() {
+        lifecycleScope.launch {
+            val json = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { com.hiktv.viewer.util.BackupManager.import(this@SetupActivity) }.getOrNull()
+            } ?: return@launch
+            binding.btnRestore.visibility = View.VISIBLE
+            binding.btnRestore.setOnClickListener { doRestore(json) }
+            if (!store.hasNvr()) {
+                setStatus("Backup found — tap “Restore from backup” to bring everything back.", error = false)
+            }
+        }
+    }
+
+    private fun doRestore(json: String) {
+        runCatching { store.importJson(json) }
+        val nvr = store.load()
+        if (nvr == null) { setStatus("Backup has no NVR connection.", error = true); return }
+        Session.connect(nvr)
+        Session.cameras = store.loadCameras()
+        Session.gridDirty = true
+        setStatus("Restored. Loading cameras…", error = false)
+        openGrid()
     }
 
     private fun prefill(nvr: Nvr) = with(binding) {

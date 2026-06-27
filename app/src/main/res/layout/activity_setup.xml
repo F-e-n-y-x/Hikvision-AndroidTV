@@ -154,6 +154,18 @@
                     android:textSize="16sp"
                     app:cornerRadius="12dp" />
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRestore"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="10dp"
+                    android:text="Restore from backup"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:visibility="gone"
+                    app:cornerRadius="12dp" />
+
                 <ProgressBar
                     android:id="@+id/progress"
                     android:layout_width="wrap_content"
