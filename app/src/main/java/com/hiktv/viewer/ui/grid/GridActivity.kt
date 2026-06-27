@@ -21,6 +21,7 @@ import com.hiktv.viewer.util.Notifications
 import com.hiktv.viewer.data.store.NvrStore
 import com.hiktv.viewer.databinding.ActivityGridBinding
 import com.hiktv.viewer.ui.fullscreen.FullscreenActivity
+import com.hiktv.viewer.ui.playback.MultiPlaybackActivity
 import com.hiktv.viewer.ui.settings.SettingsActivity
 import com.hiktv.viewer.ui.setup.SetupActivity
 import kotlinx.coroutines.CancellationException
@@ -41,6 +42,7 @@ class GridActivity : AppCompatActivity() {
 
     private var columns = 2
     private var leftLongFired = false
+    private var downLongFired = false
     private var backAt = 0L
     private var displayed: List<Camera> = emptyList()
 
@@ -227,7 +229,8 @@ class GridActivity : AppCompatActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    /** Long-press LEFT opens Settings (works before focus navigation eats the key). */
+    /** Long-press LEFT opens Settings; long-press DOWN opens synced multi-camera playback.
+     *  A short press still moves focus between tiles. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
             when (event.action) {
@@ -243,7 +246,27 @@ class GridActivity : AppCompatActivity() {
                 KeyEvent.ACTION_UP -> if (leftLongFired) { leftLongFired = false; return true }
             }
         }
+        if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (event.repeatCount == 0) downLongFired = false
+                    val held = event.eventTime - event.downTime >= ViewConfiguration.getLongPressTimeout()
+                    if (!downLongFired && (event.isLongPress || held)) {
+                        downLongFired = true
+                        openMultiPlayback()
+                        return true
+                    }
+                }
+                KeyEvent.ACTION_UP -> if (downLongFired) { downLongFired = false; return true }
+            }
+        }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun openMultiPlayback() {
+        if (Session.cameras.any { it.online }) {
+            startActivity(Intent(this, MultiPlaybackActivity::class.java))
+        }
     }
 
     private fun setLoading(loading: Boolean) {

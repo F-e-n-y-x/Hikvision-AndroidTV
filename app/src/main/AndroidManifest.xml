@@ -75,6 +75,12 @@
             android:screenOrientation="landscape" />
 
         <activity
+            android:name=".ui.playback.MultiPlaybackActivity"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:screenOrientation="landscape" />
+
+        <activity
             android:name=".ui.camera.CameraSettingsActivity"
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"

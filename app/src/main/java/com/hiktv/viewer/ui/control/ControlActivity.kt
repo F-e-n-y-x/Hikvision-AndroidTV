@@ -54,7 +54,9 @@ class ControlActivity : AppCompatActivity() {
     private var zoomIndex = 0
     private var panFx = 0f     // -1..1 fraction of available horizontal pan
     private var panFy = 0f
-    private val panStep = 0.25f
+
+    /** Finer pan steps at higher zoom so 4–5x is precise (more presses to cross the frame). */
+    private fun panStep(): Float = 0.5f / zoomSteps[zoomIndex]
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,10 +97,11 @@ class ControlActivity : AppCompatActivity() {
         stream = CameraStream(
             context = this,
             url = url,
-            networkCachingMs = 150,
+            networkCachingMs = 500,    // a bit more buffer for stable, artifact-free zoomed frames
             muted = true,
             hardware = hw,
-            useTextureView = true     // required for digital zoom + pan transforms
+            useTextureView = true,     // required for digital zoom + pan transforms
+            highQuality = true         // full-detail decode (no frame/deblock skipping) for zoom
         ) { state ->
             binding.status.post {
                 binding.status.visibility =
@@ -159,10 +162,10 @@ class ControlActivity : AppCompatActivity() {
                 KeyEvent.KEYCODE_DPAD_DOWN -> { stepZoom(false); return true }
             }
             Mode.PAN -> when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_LEFT -> { pan(-panStep, 0f); return true }
-                KeyEvent.KEYCODE_DPAD_RIGHT -> { pan(panStep, 0f); return true }
-                KeyEvent.KEYCODE_DPAD_UP -> { pan(0f, -panStep); return true }
-                KeyEvent.KEYCODE_DPAD_DOWN -> { pan(0f, panStep); return true }
+                KeyEvent.KEYCODE_DPAD_LEFT -> { pan(-panStep(), 0f); return true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { pan(panStep(), 0f); return true }
+                KeyEvent.KEYCODE_DPAD_UP -> { pan(0f, -panStep()); return true }
+                KeyEvent.KEYCODE_DPAD_DOWN -> { pan(0f, panStep()); return true }
             }
         }
         return super.onKeyDown(keyCode, event)

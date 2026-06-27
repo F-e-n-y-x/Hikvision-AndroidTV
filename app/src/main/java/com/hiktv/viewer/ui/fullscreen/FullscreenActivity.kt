@@ -280,7 +280,13 @@ class FullscreenActivity : AppCompatActivity() {
     // coming back. Skipped while in picture-in-picture, where the video must keep playing.
     override fun onStart() {
         super.onStart()
-        if (stream == null) startStream()
+        // Wait for the SurfaceView's surface to be recreated before re-attaching the decoder.
+        // Restarting too early grabs an uninitialized buffer → a frozen green frame on return.
+        if (stream == null) binding.videoLayout.postDelayed({
+            if (stream == null && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                startStream()
+            }
+        }, 350)
     }
 
     override fun onStop() {

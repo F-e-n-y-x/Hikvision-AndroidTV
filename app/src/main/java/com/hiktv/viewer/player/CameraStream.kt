@@ -27,6 +27,7 @@ class CameraStream(
     private val muted: Boolean,
     private val hardware: Boolean = true,
     private val useTextureView: Boolean = false,
+    private val highQuality: Boolean = false,
     private val onState: (State) -> Unit = {}
 ) {
 
@@ -83,12 +84,17 @@ class CameraStream(
             addOption(":rtsp-tcp")
             addOption(":clock-jitter=0")
             addOption(":clock-synchro=0")
-            // Stay realtime on weak SoCs: drop late/extra frames instead of juddering or
-            // building latency. Cheaper than trying (and failing) to render every frame.
-            addOption(":drop-late-frames")
-            addOption(":skip-frames")
-            addOption(":avcodec-skip-frame=0")
-            addOption(":avcodec-skiploopfilter=4")
+            if (highQuality) {
+                // Sharpest possible image (for zoom/detail): full in-loop deblocking, keep frames.
+                addOption(":avcodec-skiploopfilter=0")
+            } else {
+                // Stay realtime on weak SoCs: drop late/extra frames and skip deblocking instead
+                // of juddering or building latency.
+                addOption(":drop-late-frames")
+                addOption(":skip-frames")
+                addOption(":avcodec-skip-frame=0")
+                addOption(":avcodec-skiploopfilter=4")
+            }
             if (muted) addOption(":no-audio")
         }
         player.media = media
