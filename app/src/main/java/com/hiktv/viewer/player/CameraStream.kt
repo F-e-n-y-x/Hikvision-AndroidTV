@@ -39,6 +39,7 @@ class CameraStream(
 
     private var attachedLayout: VLCVideoLayout? = null
     private var released = false
+    private var stopped = false
     private var retryDelay = 1000L
 
     init {
@@ -65,6 +66,7 @@ class CameraStream(
      */
     fun start(layout: VLCVideoLayout, startDelayMs: Long = 0) {
         if (released) return
+        stopped = false
         attachedLayout = layout
         // SurfaceView is cheaper on weak GPUs; the control screen uses a TextureView so the
         // image can be scaled/translated for digital zoom + pan.
@@ -107,7 +109,7 @@ class CameraStream(
     }
 
     private fun scheduleReconnect() {
-        if (released) return
+        if (released || stopped) return
         main.postDelayed({
             if (released) return@postDelayed
             runCatching {
@@ -147,6 +149,7 @@ class CameraStream(
 
     /** Stop drawing but keep the object reusable (used when a tile scrolls off-screen). */
     fun stop() {
+        stopped = true
         main.removeCallbacksAndMessages(null)
         runCatching { player.stop() }
         attachedLayout?.let { runCatching { player.detachViews() } }

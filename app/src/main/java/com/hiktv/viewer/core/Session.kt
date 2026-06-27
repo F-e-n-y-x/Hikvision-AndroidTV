@@ -17,6 +17,9 @@ object Session {
         private set
 
     @Volatile var cameras: List<Camera> = emptyList()
+        // Defensive copy so a concurrent reassignment can't corrupt an in-progress iteration
+        // (the grid adapter reads this list while discovery may replace it).
+        set(value) { field = java.util.Collections.unmodifiableList(value.toList()) }
 
     /** Set by the Settings screen when the grid needs to re-load (cameras/layout/connection changed). */
     @Volatile var gridDirty: Boolean = false

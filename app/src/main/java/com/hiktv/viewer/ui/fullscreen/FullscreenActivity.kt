@@ -193,9 +193,11 @@ class FullscreenActivity : AppCompatActivity() {
             .putExtra(CameraSettingsActivity.EXTRA_CHANNEL, camera.channel))
     }
 
-    private fun openControl() {
-        startActivity(Intent(this, ControlActivity::class.java)
-            .putExtra(ControlActivity.EXTRA_CHANNEL, camera.channel))
+    private fun openControl(ptzMode: Boolean = false) {
+        val intent = Intent(this, ControlActivity::class.java)
+            .putExtra(ControlActivity.EXTRA_CHANNEL, camera.channel)
+        if (ptzMode) intent.putExtra(ControlActivity.EXTRA_MODE, ControlActivity.MODE_PTZ)
+        startActivity(intent)
     }
 
     private fun openSettings() {
@@ -206,8 +208,9 @@ class FullscreenActivity : AppCompatActivity() {
 
     private fun showMenu() {
         val items = arrayOf(
+            "PTZ control (move camera)",
+            "Zoom / Pan",
             "Camera settings",
-            "Zoom / Pan / PTZ",
             "Playback",
             "Snapshot",
             if (muted) "Unmute audio" else "Mute audio",
@@ -219,14 +222,15 @@ class FullscreenActivity : AppCompatActivity() {
             .setTitle(camera.name)
             .setItems(items) { _, which ->
                 when (which) {
-                    0 -> openCameraSettings()
-                    1 -> openControl()
-                    2 -> openPlayback()
-                    3 -> takeSnapshot()
-                    4 -> toggleMute()
-                    5 -> enterPip()
-                    6 -> openSettings()
-                    7 -> finish()
+                    0 -> openControl(ptzMode = true)
+                    1 -> openControl(ptzMode = false)
+                    2 -> openCameraSettings()
+                    3 -> openPlayback()
+                    4 -> takeSnapshot()
+                    5 -> toggleMute()
+                    6 -> enterPip()
+                    7 -> openSettings()
+                    8 -> finish()
                 }
             }
             .show()

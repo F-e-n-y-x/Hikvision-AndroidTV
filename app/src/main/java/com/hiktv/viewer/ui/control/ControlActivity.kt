@@ -51,6 +51,7 @@ class ControlActivity : AppCompatActivity() {
     private var isEzviz = false
 
     private var mode = Mode.ZOOM
+    private var startInPtz = false
 
     private val ptzSpeed = 60
     private val zoomSteps = floatArrayOf(1f, 1.5f, 2f, 2.5f, 3f, 4f, 5f)
@@ -71,6 +72,7 @@ class ControlActivity : AppCompatActivity() {
         if (cam == null || Session.nvr == null) { finish(); return }
         camera = cam
         binding.title.text = cam.name
+        startInPtz = intent.getStringExtra(EXTRA_MODE) == MODE_PTZ
 
         resolveController()
         startStream()
@@ -107,11 +109,12 @@ class ControlActivity : AppCompatActivity() {
         stream = CameraStream(
             context = this,
             url = url,
-            networkCachingMs = 500,    // a bit more buffer for stable, artifact-free zoomed frames
+            networkCachingMs = 250,    // low latency so PTZ feels responsive
             muted = true,
             hardware = hw,
-            useTextureView = true,     // required for digital zoom + pan transforms
-            highQuality = true         // full-detail decode (no frame/deblock skipping) for zoom
+            useTextureView = true       // required for digital zoom + pan transforms
+            // highQuality off: keep frame-dropping so PTZ/video stays smooth on weak chips.
+            // (Hardware decode does deblocking anyway, so this doesn't cost real detail.)
         ) { state ->
             binding.status.post {
                 binding.status.visibility =
@@ -128,12 +131,14 @@ class ControlActivity : AppCompatActivity() {
         // gating on it made PTZ look "not responding"); warm the login in the background.
         if (isEzviz) {
             ptzSupported = true
+            if (startInPtz) mode = Mode.PTZ
             updateOverlay()
             lifecycleScope.launch { runCatching { controller.probe() } }
             return
         }
         lifecycleScope.launch {
             ptzSupported = runCatching { controller.probe() }.getOrDefault(false)
+            if (startInPtz && ptzSupported && mode != Mode.PTZ) mode = Mode.PTZ
             updateOverlay()
         }
     }
@@ -295,5 +300,7 @@ class ControlActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_CHANNEL = "channel"
+        const val EXTRA_MODE = "mode"
+        const val MODE_PTZ = "ptz"
     }
 }

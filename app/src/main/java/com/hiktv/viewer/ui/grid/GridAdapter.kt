@@ -116,6 +116,7 @@ class GridAdapter(
     inner class Holder(val binding: ItemCameraBinding) : RecyclerView.ViewHolder(binding.root) {
         var camera: Camera? = null
         private var stream: CameraStream? = null
+        private var snapshotJob: kotlinx.coroutines.Job? = null
 
         val clearMotion = Runnable { binding.motionBadge.visibility = View.GONE }
 
@@ -155,7 +156,8 @@ class GridAdapter(
 
         /** Pull a fresh JPEG snapshot, cache it, and show it until the live frame arrives. */
         private fun refreshSnapshot(channel: Int) {
-            scope.launch {
+            snapshotJob?.cancel()
+            snapshotJob = scope.launch {
                 val bytes = withContext(Dispatchers.IO) { Session.isapi?.snapshot(channel) } ?: return@launch
                 SnapshotCache.save(context, channel, bytes)
                 val bmp = withContext(Dispatchers.IO) { SnapshotCache.decode(bytes) } ?: return@launch
@@ -169,6 +171,8 @@ class GridAdapter(
         }
 
         fun stopStream() {
+            snapshotJob?.cancel()
+            snapshotJob = null
             stream?.release()
             stream = null
         }
