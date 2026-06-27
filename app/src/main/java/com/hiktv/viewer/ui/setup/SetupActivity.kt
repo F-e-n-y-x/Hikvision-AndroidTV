@@ -1,9 +1,13 @@
 package com.hiktv.viewer.ui.setup
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.hiktv.viewer.R
 import com.hiktv.viewer.core.Session
@@ -43,7 +47,27 @@ class SetupActivity : AppCompatActivity() {
         store.load()?.let { prefill(it) }
         binding.btnConnect.setOnClickListener { onConnect() }
         binding.hostEdit.requestFocus()
-        offerRestoreIfAvailable()
+        ensurePermThenOfferRestore()
+    }
+
+    /** A fresh install needs READ permission to see the backup file a previous install wrote. */
+    private fun ensurePermThenOfferRestore() {
+        val needsPerm = Build.VERSION.SDK_INT <= 32 &&
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        if (needsPerm) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), PERM_RESTORE)
+        } else {
+            offerRestoreIfAvailable()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERM_RESTORE) offerRestoreIfAvailable()
     }
 
     /** On a fresh install, if a settings backup exists in Downloads, offer one-tap restore. */
@@ -142,5 +166,6 @@ class SetupActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_EDIT = "edit"
+        private const val PERM_RESTORE = 71
     }
 }

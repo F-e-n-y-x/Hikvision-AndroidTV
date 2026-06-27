@@ -8,21 +8,39 @@ import android.provider.MediaStore
 import java.io.File
 
 /**
- * Saves/loads the app's settings JSON to a stable file so the user doesn't re-enter the NVR,
- * cameras and PTZ details after a reinstall.
+ * Saves/loads the app's settings JSON to the shared **Downloads** folder so the user doesn't
+ * re-enter the NVR / cameras / PTZ details after a reinstall.
  *
- * On Android 10+ it uses the public **Downloads** folder via MediaStore (no permission needed,
- * survives uninstall). On older versions it falls back to the app's external files dir.
+ * Reading must work for a *fresh* install (which no longer "owns" a MediaStore file created by
+ * the previous install), so we read the public Downloads file directly. That needs
+ * READ_EXTERNAL_STORAGE + requestLegacyExternalStorage (granted/effective up to Android 12).
+ * MediaStore is used as a fallback for writing on newer versions.
  */
 object BackupManager {
 
     const val FILE_NAME = "HikTVViewer_backup.json"
 
+    private fun publicFile(): File =
+        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), FILE_NAME)
+
     /** Writes [json] and returns a human-readable location, or throws on failure. */
     fun export(context: Context, json: String): String {
+        // Direct write to public Downloads (works on API <= 29 with legacy storage).
+        runCatching {
+            val f = publicFile()
+            f.parentFile?.mkdirs()
+            f.writeText(json)
+            return "Downloads/$FILE_NAME"
+        }
+        // Fallback: MediaStore (Android 10+ without legacy access).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = context.contentResolver
-            deleteExisting(context)
+            runCatching {
+                resolver.delete(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    "${MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(FILE_NAME)
+                )
+            }
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, FILE_NAME)
                 put(MediaStore.Downloads.MIME_TYPE, "application/json")
@@ -32,41 +50,34 @@ object BackupManager {
             resolver.openOutputStream(uri).use { it!!.write(json.toByteArray()) }
             return "Downloads/$FILE_NAME"
         }
-        val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
-        File(dir, FILE_NAME).writeText(json)
-        return "$dir/$FILE_NAME"
+        error("Could not write backup")
     }
 
-    /** Reads the backup JSON, or null if none is found. */
+    /** Reads the backup JSON, or null if none is found / not readable. */
     fun import(context: Context): String? {
+        // Direct read first — this is what makes restore work after a reinstall.
+        runCatching {
+            val f = publicFile()
+            if (f.exists() && f.canRead()) return f.readText()
+        }
+        // Fallback: a MediaStore file this install owns.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = context.contentResolver
-            val projection = arrayOf(MediaStore.Downloads._ID)
-            val selection = "${MediaStore.Downloads.DISPLAY_NAME} = ?"
-            resolver.query(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI, projection, selection,
-                arrayOf(FILE_NAME), null
-            )?.use { c ->
-                if (c.moveToFirst()) {
-                    val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.Downloads._ID))
-                    val uri = android.content.ContentUris.withAppendedId(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
-                    return resolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+            runCatching {
+                resolver.query(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    arrayOf(MediaStore.Downloads._ID),
+                    "${MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(FILE_NAME), null
+                )?.use { c ->
+                    if (c.moveToFirst()) {
+                        val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.Downloads._ID))
+                        val uri = android.content.ContentUris.withAppendedId(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                        return resolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                    }
                 }
             }
-            return null
         }
-        val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
-        val f = File(dir, FILE_NAME)
-        return if (f.exists()) f.readText() else null
-    }
-
-    private fun deleteExisting(context: Context) {
-        runCatching {
-            context.contentResolver.delete(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                "${MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(FILE_NAME)
-            )
-        }
+        return null
     }
 }
