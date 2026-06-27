@@ -80,6 +80,10 @@ class CameraStream(
             // hardware=false forces software decoding; reserves the scarce H.265 hardware
             // decoder sessions for the fullscreen stream and avoids multi-decoder crashes.
             setHWDecoderEnabled(hardware, false)
+            // Disable MediaCodec direct (zero-copy) rendering: on many cheap H.265 TV chips the
+            // DR path emits all-green frames. The copy path is slightly heavier but renders
+            // correctly, and is required for TextureView transforms (zoom/pan) too.
+            if (hardware) addOption(":no-mediacodec-dr")
             addOption(":network-caching=$networkCachingMs")
             addOption(":rtsp-tcp")
             addOption(":clock-jitter=0")

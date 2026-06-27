@@ -193,6 +193,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
             mp.attachViews(cells[i], null, false, false)
             val media = Media(PlayerEngine.get(this), Uri.parse(url)).apply {
                 setHWDecoderEnabled(hw, false)
+                if (hw) addOption(":no-mediacodec-dr")   // avoid all-green frames on H.265 TV chips
                 addOption(":network-caching=1500")
                 addOption(":rtsp-tcp")
                 addOption(":drop-late-frames")

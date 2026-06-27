@@ -165,6 +165,7 @@ class PlaybackActivity : AppCompatActivity() {
         }
         val media = Media(PlayerEngine.get(this), Uri.parse(url)).apply {
             setHWDecoderEnabled(hw, false)
+            if (hw) addOption(":no-mediacodec-dr")   // avoid all-green frames on H.265 TV chips
             // Recordings don't need low latency; a deep cache absorbs bursty RTSP delivery and
             // frame-dropping keeps the picture moving on weak SoCs instead of stuttering.
             addOption(":network-caching=1800")

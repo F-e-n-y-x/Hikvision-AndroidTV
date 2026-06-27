@@ -121,14 +121,17 @@ class CameraSettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(8), dp(24), 0)
         }
-        val email = field("EZVIZ account email", store.ezvizAccount ?: "", InputType.TYPE_CLASS_TEXT)
+        val email = field("EZVIZ email or phone (with country code, e.g. +91…)",
+            store.ezvizAccount ?: "", InputType.TYPE_CLASS_TEXT)
         val pass = field("EZVIZ password", store.ezvizPassword ?: "",
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
         val serial = field("This camera's serial (on the device / EZVIZ app)",
             store.ezvizSerial(camera.channel) ?: "", InputType.TYPE_CLASS_TEXT)
         listOf(
             label("Move this EZVIZ camera via the EZVIZ cloud (the only way for CS-H8c).\n" +
-                "Account is shared across cameras; serial is per camera. Turn OFF 2FA on the account."),
+                "Sign in with your phone number or email + PASSWORD. If you only use QR-code " +
+                "login, set a password first in the EZVIZ app (Profile → Account Security). " +
+                "Turn OFF 2FA. Account is shared across cameras; serial is per camera."),
             email, pass, serial
         ).forEach { view.addView(it) }
 
