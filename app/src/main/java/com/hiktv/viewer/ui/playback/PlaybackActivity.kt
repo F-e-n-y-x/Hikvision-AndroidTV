@@ -144,7 +144,8 @@ class PlaybackActivity : AppCompatActivity() {
         val url = RtspUrls.playback(nvr, camera, Date(fromPseudo), Date(windowEnd))
         val hw = NvrStore(this).decoderMode != 2
         val mp = MediaPlayer(PlayerEngine.get(this))
-        mp.attachViews(binding.videoLayout, null, false, false)
+        // TextureView so popups/overlays don't black out the video.
+        mp.attachViews(binding.videoLayout, null, false, true)
         mp.setEventListener { e ->
             when (e.type) {
                 MediaPlayer.Event.Playing -> binding.status.post {

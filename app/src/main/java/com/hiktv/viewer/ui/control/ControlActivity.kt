@@ -50,7 +50,7 @@ class ControlActivity : AppCompatActivity() {
     private var mode = Mode.ZOOM
 
     private val ptzSpeed = 60
-    private val zoomSteps = floatArrayOf(1f, 1.5f, 2f, 2.5f, 3f)
+    private val zoomSteps = floatArrayOf(1f, 1.5f, 2f, 2.5f, 3f, 4f, 5f)
     private var zoomIndex = 0
     private var panFx = 0f     // -1..1 fraction of available horizontal pan
     private var panFy = 0f

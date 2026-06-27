@@ -123,7 +123,7 @@ class CameraSettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(8), dp(24), 0)
         }
-        val host = field("Camera IP (e.g. 192.168.11.201)", existing?.host ?: "", InputType.TYPE_CLASS_TEXT)
+        val host = field("Camera IP (e.g. 192.168.1.64)", existing?.host ?: "", InputType.TYPE_CLASS_TEXT)
         val port = field("Port (ONVIF/HTTP, usually 80)", (existing?.httpPort ?: 80).toString(), InputType.TYPE_CLASS_NUMBER)
         val user = field("Username", existing?.username ?: "admin", InputType.TYPE_CLASS_TEXT)
         val pass = field("Password", existing?.password ?: "",
@@ -133,7 +133,9 @@ class CameraSettingsActivity : AppCompatActivity() {
             isChecked = if (existing != null) onvifWas else true
         }
         listOf(
-            label("Connect directly to the camera for PTZ / zoom"),
+            label("Connect directly to the camera for PTZ.\n" +
+                "EZVIZ: user = admin, password = the 6-letter verification code, port 80.\n" +
+                "First enable RTSP in the EZVIZ app → Settings → Local Service Settings."),
             host, port, user, pass, onvif
         ).forEach { view.addView(it) }
 

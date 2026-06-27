@@ -50,13 +50,19 @@ class OnvifPtz(
         runCatching { prepare() }.getOrDefault(false)
     }
 
-    /** Throws with a readable message on the first step that fails (used by diagnose()). */
+    /** Throws with a readable message on the first hard step that fails (used by diagnose()). */
     private fun prepare(): Boolean {
-        syncClock()
-        val caps = soap(deviceUrl, DEVICE_NS, "GetCapabilities",
-            "<GetCapabilities><Category>All</Category></GetCapabilities>")
-        mediaXAddr = xaddrFor(caps, "Media") ?: "http://$host:$port/onvif/Media"
-        ptzXAddr = xaddrFor(caps, "PTZ") ?: "http://$host:$port/onvif/PTZ"
+        // Clock sync + capabilities are best-effort — some EZVIZ firmwares answer oddly. The
+        // decisive, auth-checked step is GetProfiles; if that returns a token we can drive PTZ.
+        runCatching { syncClock() }
+        runCatching {
+            val caps = soap(deviceUrl, DEVICE_NS, "GetCapabilities",
+                "<GetCapabilities><Category>All</Category></GetCapabilities>")
+            mediaXAddr = xaddrFor(caps, "Media")
+            ptzXAddr = xaddrFor(caps, "PTZ")
+        }
+        if (mediaXAddr == null) mediaXAddr = "http://$host:$port/onvif/Media"
+        if (ptzXAddr == null) ptzXAddr = "http://$host:$port/onvif/PTZ"
 
         val profiles = soap(mediaXAddr!!, MEDIA_NS, "GetProfiles", "<GetProfiles/>")
         profileToken = Regex("Profiles[^>]*token=\"([^\"]+)\"").find(profiles)?.groupValues?.get(1)

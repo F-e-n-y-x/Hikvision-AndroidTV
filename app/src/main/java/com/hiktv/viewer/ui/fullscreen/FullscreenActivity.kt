@@ -23,6 +23,7 @@ import com.hiktv.viewer.data.store.NvrStore
 import com.hiktv.viewer.databinding.ActivityFullscreenBinding
 import com.hiktv.viewer.player.CameraStream
 import com.hiktv.viewer.ui.camera.CameraSettingsActivity
+import com.hiktv.viewer.ui.control.ControlActivity
 import com.hiktv.viewer.ui.playback.PlaybackActivity
 import com.hiktv.viewer.ui.settings.SettingsActivity
 import kotlinx.coroutines.launch
@@ -75,7 +76,7 @@ class FullscreenActivity : AppCompatActivity() {
     private fun bindCamera() {
         binding.title.text = camera.name
         binding.hint.visibility = View.VISIBLE
-        binding.hint.text = "◀ ▶ switch camera   •   OK: controls   •   ▲ more   •   hold ▼ playback"
+        binding.hint.text = "◀ ▶ switch   •   OK: menu   •   ▲ zoom/PTZ   •   hold ▼ playback"
     }
 
     private fun startStream() {
@@ -88,7 +89,8 @@ class FullscreenActivity : AppCompatActivity() {
             url = url,
             networkCachingMs = 150,
             muted = false,                // audio decoded; muted via volume so it can be toggled
-            hardware = hw
+            hardware = hw,
+            useTextureView = true         // survives dialogs/overlays without going black
         ) { state ->
             binding.status.post {
                 binding.status.visibility =
@@ -122,13 +124,11 @@ class FullscreenActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A -> {
-                openCameraSettings(); return true
-            }
-            // ▲ opens quick actions (the Mi remote's menu key isn't reliably delivered to apps).
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> {
-                showQuickActions(); return true
-            }
+            // OK opens the popup menu (settings + all actions).
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A,
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> { showMenu(); return true }
+            // ▲ opens the zoom / pan / PTZ control page.
+            KeyEvent.KEYCODE_DPAD_UP -> { openControl(); return true }
         }
         return super.onKeyDown(keyCode, event)
     }
@@ -160,7 +160,7 @@ class FullscreenActivity : AppCompatActivity() {
                 return true
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
-                // Hold ▼ to jump into this camera's playback; a short tap does nothing.
+                // Tap ▼ = quick actions (snapshot / audio / PiP); hold ▼ = open playback.
                 when (event.action) {
                     KeyEvent.ACTION_DOWN -> {
                         if (event.repeatCount == 0) downLongFired = false
@@ -191,18 +191,26 @@ class FullscreenActivity : AppCompatActivity() {
             .putExtra(CameraSettingsActivity.EXTRA_CHANNEL, camera.channel))
     }
 
+    private fun openControl() {
+        startActivity(Intent(this, ControlActivity::class.java)
+            .putExtra(ControlActivity.EXTRA_CHANNEL, camera.channel))
+    }
+
     private fun openSettings() {
         startActivity(Intent(this, SettingsActivity::class.java))
     }
 
     // ---- Quick live actions (MENU) ----------------------------------------
 
-    private fun showQuickActions() {
+    private fun showMenu() {
         val items = arrayOf(
-            "Camera controls & settings",
+            "Camera settings",
+            "Zoom / Pan / PTZ",
+            "Playback",
             "Snapshot",
             if (muted) "Unmute audio" else "Mute audio",
             "Picture-in-picture",
+            "App settings",
             "Close"
         )
         MaterialAlertDialogBuilder(this)
@@ -210,10 +218,13 @@ class FullscreenActivity : AppCompatActivity() {
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> openCameraSettings()
-                    1 -> takeSnapshot()
-                    2 -> toggleMute()
-                    3 -> enterPip()
-                    4 -> finish()
+                    1 -> openControl()
+                    2 -> openPlayback()
+                    3 -> takeSnapshot()
+                    4 -> toggleMute()
+                    5 -> enterPip()
+                    6 -> openSettings()
+                    7 -> finish()
                 }
             }
             .show()
@@ -261,6 +272,24 @@ class FullscreenActivity : AppCompatActivity() {
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+
+    // Release the decoder when another screen (camera page / control / settings) covers us, and
+    // start fresh on return. This both frees the scarce decoder and avoids a black surface when
+    // coming back. Skipped while in picture-in-picture, where the video must keep playing.
+    override fun onStart() {
+        super.onStart()
+        if (stream == null) startStream()
+    }
+
+    override fun onStop() {
+        val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+        if (!inPip) {
+            switchHandler.removeCallbacks(startStreamRunnable)
+            stream?.release()
+            stream = null
+        }
+        super.onStop()
+    }
 
     override fun onDestroy() {
         switchHandler.removeCallbacks(startStreamRunnable)

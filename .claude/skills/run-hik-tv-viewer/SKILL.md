@@ -91,7 +91,7 @@ no window; use the agent path above.
   sleeps 6 s; if you script your own flow, sleep ~1–2 s before `shot`. (A black grid shot is
   ~13 KB; a live one is ~2 MB — size is a quick liveness check.)
 - **The app needs the NVR reachable on the LAN.** The emulator reaches the host's LAN via
-  NAT, so a real NVR at e.g. `192.168.11.200` works from `emulator-5554`. With no/unreachable
+  NAT, so a real NVR at e.g. `192.168.1.100` works from `emulator-5554`. With no/unreachable
   NVR you get the empty state (logo + "Auto-detect cameras" / "Connection settings" buttons).
 - **Cleartext HTTP is intentionally allowed** (network-security-config) — ISAPI runs on port
   80. Without it the connection dies with "CLEARTEXT not permitted".
