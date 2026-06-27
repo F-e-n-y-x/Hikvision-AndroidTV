@@ -235,23 +235,77 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun backup() {
-        val msg = runCatching { com.hiktv.viewer.util.BackupManager.export(this, store.exportJson()) }
-            .fold(
-                { "Saved to $it\n\nKeep this file — restore it after a reinstall to avoid re-entering everything." },
-                { "Backup failed: ${it.message}" }
-            )
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Backup")
+            .setMessage("The backup contains your NVR and EZVIZ passwords. Protect it with a PIN?")
+            .setPositiveButton("Set a PIN") { _, _ -> askPinThenBackup() }
+            .setNegativeButton("No encryption") { _, _ -> doBackup(null) }
+            .setNeutralButton("Cancel", null)
+            .show()
+    }
+
+    private fun askPinThenBackup() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "PIN (4+ digits)"
+        }
+        val dlg = MaterialAlertDialogBuilder(this)
+            .setTitle("Backup PIN")
+            .setMessage("You'll enter this PIN to restore. Don't forget it — it can't be recovered.")
+            .setView(input)
+            .setPositiveButton("Encrypt & save") { _, _ ->
+                val pin = input.text.toString()
+                if (pin.length < 4) toast("PIN must be at least 4 digits") else doBackup(pin)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+        com.hiktv.viewer.util.DialogIme.attach(dlg, this)
+    }
+
+    private fun doBackup(pin: String?) {
+        val raw = store.exportJson()
+        val payload = if (pin == null) raw else com.hiktv.viewer.util.BackupCrypto.encrypt(raw, pin)
+        val msg = runCatching { com.hiktv.viewer.util.BackupManager.export(this, payload) }.fold(
+            {
+                "Saved to $it" + (if (pin != null) "  (PIN-encrypted)" else "") +
+                    "\n\nKeep this file — restore it after a reinstall to avoid re-entering everything."
+            },
+            { "Backup failed: ${it.message}" }
+        )
         MaterialAlertDialogBuilder(this).setTitle("Backup").setMessage(msg)
             .setPositiveButton("OK", null).show()
     }
 
     private fun restore() {
-        val json = runCatching { com.hiktv.viewer.util.BackupManager.import(this) }.getOrNull()
-        if (json == null) {
+        val text = runCatching { com.hiktv.viewer.util.BackupManager.import(this) }.getOrNull()
+        if (text == null) {
             MaterialAlertDialogBuilder(this).setTitle("Restore")
                 .setMessage("No backup found (Downloads/${com.hiktv.viewer.util.BackupManager.FILE_NAME}).")
                 .setPositiveButton("OK", null).show()
             return
         }
+        if (com.hiktv.viewer.util.BackupCrypto.isEncrypted(text)) askPinThenRestore(text)
+        else confirmRestore(text)
+    }
+
+    private fun askPinThenRestore(encrypted: String) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Backup PIN"
+        }
+        val dlg = MaterialAlertDialogBuilder(this)
+            .setTitle("Encrypted backup")
+            .setView(input)
+            .setPositiveButton("Unlock") { _, _ ->
+                val plain = com.hiktv.viewer.util.BackupCrypto.decrypt(encrypted, input.text.toString())
+                if (plain == null) toast("Wrong PIN") else confirmRestore(plain)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+        com.hiktv.viewer.util.DialogIme.attach(dlg, this)
+    }
+
+    private fun confirmRestore(json: String) {
         MaterialAlertDialogBuilder(this)
             .setTitle("Restore settings?")
             .setMessage("This replaces current settings with the saved backup and reconnects.")
@@ -267,6 +321,9 @@ class SettingsActivity : AppCompatActivity() {
             .setNegativeButton("Cancel", null)
             .show()
     }
+
+    private fun toast(m: String) =
+        android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_SHORT).show()
 
     private fun appVersion(): String =
         runCatching { "Hik TV Viewer ${packageManager.getPackageInfo(packageName, 0).versionName}" }
