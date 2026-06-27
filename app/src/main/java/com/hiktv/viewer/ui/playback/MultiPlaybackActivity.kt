@@ -54,6 +54,10 @@ class MultiPlaybackActivity : AppCompatActivity() {
     private var playing = false
     private var anchorElapsed = 0L
 
+    // Ignore the leftover ▼ key-up/repeats from the grid long-press that launched us, so that
+    // press doesn't immediately scrub. Real remote commands register after this.
+    private var acceptKeysAt = 0L
+
     private val ui = Handler(Looper.getMainLooper())
     private val clock = SimpleDateFormat("hh:mm:ss a", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
     private val dayFmt = SimpleDateFormat("EEE, dd MMM", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
@@ -78,8 +82,8 @@ class MultiPlaybackActivity : AppCompatActivity() {
         binding.timeline.setPlayhead(playhead)
         binding.dayLabel.text = dayFmt.format(Date(windowStart))
         updateTimeLabel()
+        acceptKeysAt = SystemClock.elapsedRealtime() + 800
         loadSegments()
-        binding.status.text = "Press OK to play all ${cams.size} cameras together"
     }
 
     private fun buildGrid() {
@@ -108,6 +112,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
                 width = 0; height = 0
                 columnSpec = GridLayout.spec(i % cols, 1f)
                 rowSpec = GridLayout.spec(i / cols, 1f)
+                setGravity(Gravity.FILL)     // make each cell fill its grid area (not wrap small)
                 setMargins(m, m, m, m)
             }
             binding.grid.addView(cell, lp)
@@ -133,12 +138,19 @@ class MultiPlaybackActivity : AppCompatActivity() {
                 binding.timeline.setPlayhead(playhead)
                 updateTimeLabel()
             }
+            // Auto-start so the wall plays immediately (no extra button press needed).
+            playAllFrom(playhead)
         }
     }
 
     // ---- Controls ----------------------------------------------------------
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (SystemClock.elapsedRealtime() < acceptKeysAt) return true   // swallow the launching ▼
+        return onCmd(keyCode, event)
+    }
+
+    private fun onCmd(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
         KeyEvent.KEYCODE_DPAD_LEFT -> { scrub(-stepFor(event)); true }
         KeyEvent.KEYCODE_DPAD_RIGHT -> { scrub(stepFor(event)); true }
         KeyEvent.KEYCODE_DPAD_UP -> { scrub(3600_000L); true }

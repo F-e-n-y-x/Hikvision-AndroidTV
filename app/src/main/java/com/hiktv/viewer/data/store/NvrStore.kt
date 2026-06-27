@@ -146,6 +146,22 @@ class NvrStore(context: Context) {
 
     private fun directKey(channel: Int) = "direct_$channel"
 
+    // ---- EZVIZ cloud PTZ (account is global; serial is per-camera) ----------
+
+    var ezvizAccount: String?
+        get() = prefs.getString("ezviz_account", null)?.takeIf { it.isNotBlank() }
+        set(v) = prefs.edit().putString("ezviz_account", v).apply()
+
+    var ezvizPassword: String?
+        get() = prefs.getString("ezviz_password", null)?.takeIf { it.isNotBlank() }
+        set(v) = prefs.edit().putString("ezviz_password", v).apply()
+
+    fun ezvizSerial(channel: Int): String? =
+        prefs.getString("ezviz_serial_$channel", null)?.takeIf { it.isNotBlank() }
+
+    fun setEzvizSerial(channel: Int, serial: String?) =
+        prefs.edit().putString("ezviz_serial_$channel", serial).apply()
+
     companion object {
         private const val K_HOST = "host"
         private const val K_HTTP = "http_port"

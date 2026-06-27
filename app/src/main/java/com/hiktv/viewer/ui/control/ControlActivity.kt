@@ -8,9 +8,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.hiktv.viewer.core.Session
 import com.hiktv.viewer.data.RtspUrls
+import com.hiktv.viewer.data.ezviz.EzvizCloud
 import com.hiktv.viewer.data.isapi.IsapiClient
 import com.hiktv.viewer.data.model.Camera
 import com.hiktv.viewer.data.onvif.OnvifPtz
+import com.hiktv.viewer.data.ptz.EzvizCloudPtzController
 import com.hiktv.viewer.data.ptz.IsapiPtzController
 import com.hiktv.viewer.data.ptz.OnvifPtzController
 import com.hiktv.viewer.data.ptz.PtzController
@@ -78,8 +80,14 @@ class ControlActivity : AppCompatActivity() {
     private fun resolveController() {
         val store = NvrStore(this)
         val direct = store.loadDirect(camera.channel)
-        hasDirect = direct != null
+        val serial = store.ezvizSerial(camera.channel)
+        val acct = store.ezvizAccount
+        val pass = store.ezvizPassword
+        val ezviz = serial != null && acct != null && pass != null
+        hasDirect = direct != null || ezviz
         ptz = when {
+            ezviz ->
+                EzvizCloudPtzController(EzvizCloud(), acct!!, pass!!, serial!!)
             direct != null && store.loadDirectOnvif(camera.channel) ->
                 OnvifPtzController(OnvifPtz(direct.host, direct.httpPort, direct.username, direct.password))
             direct != null ->

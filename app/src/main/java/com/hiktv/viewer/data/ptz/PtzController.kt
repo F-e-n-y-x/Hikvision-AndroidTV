@@ -1,5 +1,6 @@
 package com.hiktv.viewer.data.ptz
 
+import com.hiktv.viewer.data.ezviz.EzvizCloud
 import com.hiktv.viewer.data.isapi.IsapiClient
 import com.hiktv.viewer.data.onvif.OnvifPtz
 
@@ -32,4 +33,34 @@ class OnvifPtzController(private val onvif: OnvifPtz) : PtzController {
     override suspend fun move(pan: Int, tilt: Int, zoom: Int) =
         onvif.continuousMove(pan / 100f, tilt / 100f, zoom / 100f)
     override suspend fun stop() = onvif.stop()
+}
+
+/**
+ * PTZ via the EZVIZ cloud — the only way to move EZVIZ cameras (CS-H8c) that expose no local
+ * control. Pan/tilt only (these cameras have no optical zoom). Continuous: START on press,
+ * STOP on release.
+ */
+class EzvizCloudPtzController(
+    private val cloud: EzvizCloud,
+    private val account: String,
+    private val password: String,
+    private val serial: String
+) : PtzController {
+    private var lastCommand = "UP"
+
+    override suspend fun probe(): Boolean =
+        cloud.sessionId != null || cloud.login(account, password) == null
+
+    override suspend fun move(pan: Int, tilt: Int, zoom: Int): Boolean {
+        val command = when {
+            pan < 0 -> "LEFT"; pan > 0 -> "RIGHT"
+            tilt > 0 -> "UP"; tilt < 0 -> "DOWN"
+            else -> return true            // zoom unsupported on EZVIZ pan/tilt cams
+        }
+        lastCommand = command
+        if (cloud.sessionId == null && cloud.login(account, password) != null) return false
+        return cloud.ptz(serial, command, "START")
+    }
+
+    override suspend fun stop(): Boolean = cloud.ptz(serial, lastCommand, "STOP")
 }

@@ -68,6 +68,7 @@ class CameraSettingsActivity : AppCompatActivity() {
 
         val rows = listOf(
             Row("PTZ & zoom control", controlSubtitle()) { openControl() },
+            Row("EZVIZ cloud PTZ", ezvizSubtitle()) { editEzviz() },
             Row("Direct camera connection", directSubtitle()) { editDirect() },
             Row("Test PTZ connection", "Check why PTZ does / doesn't work") { testPtz() },
             Row("Playback", "View this camera's recordings") { openPlayback() },
@@ -91,15 +92,61 @@ class CameraSettingsActivity : AppCompatActivity() {
 
     // ---- Control -----------------------------------------------------------
 
-    private fun controlSubtitle(): String =
-        if (store.loadDirect(camera.channel) != null)
+    private fun controlSubtitle(): String = when {
+        store.ezvizSerial(camera.channel) != null && store.ezvizAccount != null ->
+            "Live PTZ via EZVIZ cloud + digital zoom"
+        store.loadDirect(camera.channel) != null ->
             "Live control via direct camera connection"
-        else
+        else ->
             "Live PTZ (if supported) or digital zoom, via the NVR"
+    }
 
     private fun openControl() {
         startActivity(Intent(this, ControlActivity::class.java)
             .putExtra(ControlActivity.EXTRA_CHANNEL, camera.channel))
+    }
+
+    // ---- EZVIZ cloud PTZ ---------------------------------------------------
+
+    private fun ezvizSubtitle(): String {
+        val serial = store.ezvizSerial(camera.channel)
+        return if (serial != null && store.ezvizAccount != null)
+            "On — ${store.ezvizAccount} · serial $serial (tap to edit)"
+        else "Set EZVIZ account + camera serial to move EZVIZ cameras"
+    }
+
+    /** EZVIZ cameras (CS-H8c) move only via the EZVIZ cloud — account is shared, serial per camera. */
+    private fun editEzviz() {
+        val view = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), 0)
+        }
+        val email = field("EZVIZ account email", store.ezvizAccount ?: "", InputType.TYPE_CLASS_TEXT)
+        val pass = field("EZVIZ password", store.ezvizPassword ?: "",
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        val serial = field("This camera's serial (on the device / EZVIZ app)",
+            store.ezvizSerial(camera.channel) ?: "", InputType.TYPE_CLASS_TEXT)
+        listOf(
+            label("Move this EZVIZ camera via the EZVIZ cloud (the only way for CS-H8c).\n" +
+                "Account is shared across cameras; serial is per camera. Turn OFF 2FA on the account."),
+            email, pass, serial
+        ).forEach { view.addView(it) }
+
+        val dlg = MaterialAlertDialogBuilder(this)
+            .setTitle("EZVIZ cloud PTZ")
+            .setView(view)
+            .setPositiveButton("Save") { _, _ ->
+                store.ezvizAccount = email.text.toString().trim().ifEmpty { null }
+                store.ezvizPassword = pass.text.toString().ifEmpty { null }
+                store.setEzvizSerial(camera.channel, serial.text.toString().trim().ifEmpty { null })
+                render()
+            }
+            .setNeutralButton("Clear") { _, _ ->
+                store.setEzvizSerial(camera.channel, null); render()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+        DialogIme.attach(dlg, this)
     }
 
     // ---- Direct connection -------------------------------------------------
@@ -179,8 +226,16 @@ class CameraSettingsActivity : AppCompatActivity() {
             .setMessage("Contacting camera…")
             .setPositiveButton("Close", null)
             .show()
+        val serial = store.ezvizSerial(camera.channel)
+        val acct = store.ezvizAccount
+        val pass = store.ezvizPassword
         lifecycleScope.launch {
             val msg = when {
+                serial != null && acct != null && pass != null -> {
+                    val err = com.hiktv.viewer.data.ezviz.EzvizCloud().login(acct, pass)
+                    if (err == null) "EZVIZ cloud login OK. PTZ should work — open controls, OK to PTZ mode, move with the D-pad."
+                    else "EZVIZ cloud PTZ: $err"
+                }
                 direct != null && onvif ->
                     OnvifPtz(direct.host, direct.httpPort, direct.username, direct.password).diagnose()
                 direct != null -> {
