@@ -53,6 +53,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
     private var playFrom = 0L
     private var playing = false
     private var anchorElapsed = 0L
+    private var hasPlayed = false
 
     // Ignore the leftover ▼ key-up/repeats from the grid long-press that launched us, so that
     // press doesn't immediately scrub. Real remote commands register after this.
@@ -193,6 +194,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
         playFrom = fromPseudo
         anchorElapsed = SystemClock.elapsedRealtime()
         playing = true
+        hasPlayed = true
         binding.status.text = "Playing ${cams.size} cameras…"
         cams.forEachIndexed { i, cam ->
             val url = RtspUrls.playback(nvr, cam, Date(fromPseudo), Date(windowEnd))
@@ -254,6 +256,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
         ui.removeCallbacks(advance)
         for (i in players.indices) {
             players[i]?.let {
+                runCatching { it.setEventListener(null) }
                 runCatching { it.stop() }
                 runCatching { it.detachViews() }
                 runCatching { it.release() }
@@ -261,6 +264,16 @@ class MultiPlaybackActivity : AppCompatActivity() {
             players[i] = null
         }
         playing = false
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Resume after returning from background (we released everything in onStop).
+        if (hasPlayed && cells.isNotEmpty() && players.all { it == null } && !isFinishing) {
+            binding.grid.postDelayed({
+                if (players.all { it == null } && !isFinishing) playAllFrom(playhead)
+            }, 250)
+        }
     }
 
     override fun onStop() {

@@ -39,8 +39,9 @@ class CameraStream(
     private val appContext = context.applicationContext
 
     private var attachedLayout: VLCVideoLayout? = null
-    private var released = false
-    private var stopped = false
+    // Read on LibVLC's event thread (scheduleReconnect) and written on the main thread — volatile.
+    @Volatile private var released = false
+    @Volatile private var stopped = false
     private var retryDelay = 1000L
 
     init {
@@ -113,7 +114,9 @@ class CameraStream(
     private fun scheduleReconnect() {
         if (released || stopped) return
         main.postDelayed({
-            if (released) return@postDelayed
+            // Re-check on the main thread: stop()/release() may have run during the backoff,
+            // so we must not stop()/play() a released player or a detached surface.
+            if (released || stopped) return@postDelayed
             runCatching {
                 player.stop()
                 play()
@@ -133,11 +136,16 @@ class CameraStream(
      * the enlarged image to pan around it. GPU-cheap — no second decode.
      */
     fun setTransform(scale: Float, dxPx: Float, dyPx: Float) {
-        val tv = findTextureView(attachedLayout) ?: return
-        tv.scaleX = scale
-        tv.scaleY = scale
-        tv.translationX = dxPx
-        tv.translationY = dyPx
+        val tv = findTextureView(attachedLayout)
+        if (tv != null) {
+            tv.scaleX = scale
+            tv.scaleY = scale
+            tv.translationX = dxPx
+            tv.translationY = dyPx
+        } else {
+            // SurfaceView (e.g. Amlogic): no view transform — fall back to LibVLC centred zoom.
+            runCatching { player.scale = if (scale <= 1f) 0f else scale }
+        }
     }
 
     /** Centred digital zoom (no pan). */

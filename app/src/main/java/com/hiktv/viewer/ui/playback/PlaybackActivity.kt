@@ -247,6 +247,7 @@ class PlaybackActivity : AppCompatActivity() {
     private fun releasePlayer() {
         ui.removeCallbacks(advance)
         player?.let {
+            runCatching { it.setEventListener(null) }   // no late event into a released player / dead views
             runCatching { it.stop() }
             runCatching { it.detachViews() }
             runCatching { it.release() }

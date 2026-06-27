@@ -20,8 +20,8 @@ android {
         applicationId = "com.hiktv.viewer"
         minSdk = 23          // Android TV (Android 6.0+); required by EncryptedSharedPreferences
         targetSdk = 35
-        versionCode = 15
-        versionName = "2.3.1"
+        versionCode = 16
+        versionName = "2.3.2"
     }
 
     signingConfigs {

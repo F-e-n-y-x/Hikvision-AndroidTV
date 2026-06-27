@@ -113,7 +113,9 @@ class ControlActivity : AppCompatActivity() {
             networkCachingMs = 250,    // low latency so PTZ feels responsive
             muted = true,
             hardware = hw,
-            useTextureView = true,      // required for digital zoom + pan transforms
+            // Amlogic uses the direct (non-GL) display, which needs a SurfaceView — TextureView
+            // would crash the Mali driver. Zoom still works (centred) via the player-scale fallback.
+            useTextureView = !com.hiktv.viewer.util.DeviceQuirks.isAmlogic,
             directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic
             // highQuality off: keep frame-dropping so PTZ/video stays smooth on weak chips.
             // (Hardware decode does deblocking anyway, so this doesn't cost real detail.)
@@ -292,6 +294,22 @@ class ControlActivity : AppCompatActivity() {
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+
+    // Free the decoder + surface when another screen covers us, and rebuild on return — holding a
+    // live decoder while the surface is torn down is the surface-reinit crash class on weak SoCs.
+    override fun onStart() {
+        super.onStart()
+        if (stream == null) binding.videoLayout.postDelayed({
+            if (stream == null && !isFinishing) { startStream(); applyTransform() }
+        }, 200)
+    }
+
+    override fun onStop() {
+        if (ptzActive) stopPtz()
+        stream?.release()
+        stream = null
+        super.onStop()
+    }
 
     override fun onDestroy() {
         if (ptzActive) stopPtz()
