@@ -93,7 +93,9 @@ class FullscreenActivity : AppCompatActivity() {
             hardware = hw,
             // Amlogic needs zero-copy rendering (the copy path leaves the surface green); the
             // MiTV needs the copy path. directRender captures the user toggle + Amlogic auto.
-            directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic
+            directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic,
+            // Single full-screen surface → safe to use the no-GL display that dodges the Mali crash.
+            directDisplay = com.hiktv.viewer.util.DeviceQuirks.isAmlogic
             // SurfaceView (default): the lightweight hardware-overlay path — much smoother on
             // weak TV GPUs. Popups render over it fine; black-on-return is handled by the
             // onStop/onStart release-restart below.

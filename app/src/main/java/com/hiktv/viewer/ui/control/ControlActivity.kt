@@ -116,7 +116,8 @@ class ControlActivity : AppCompatActivity() {
             // Amlogic uses the direct (non-GL) display, which needs a SurfaceView — TextureView
             // would crash the Mali driver. Zoom still works (centred) via the player-scale fallback.
             useTextureView = !com.hiktv.viewer.util.DeviceQuirks.isAmlogic,
-            directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic
+            directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic,
+            directDisplay = com.hiktv.viewer.util.DeviceQuirks.isAmlogic
             // highQuality off: keep frame-dropping so PTZ/video stays smooth on weak chips.
             // (Hardware decode does deblocking anyway, so this doesn't cost real detail.)
         ) { state ->

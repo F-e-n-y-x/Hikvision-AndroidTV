@@ -167,6 +167,8 @@ class PlaybackActivity : AppCompatActivity() {
         }
         val media = Media(PlayerEngine.get(this), Uri.parse(url)).apply {
             setHWDecoderEnabled(hw, false)
+            // Single playback surface → no-GL display on Amlogic (dodges the Mali crash).
+            if (com.hiktv.viewer.util.DeviceQuirks.isAmlogic) addOption(":vout=android_display")
             if (hw && !directRender) addOption(":no-mediacodec-dr")   // copy path: green-fix on MiTV
             // Recordings don't need low latency; a deep cache absorbs bursty RTSP delivery and
             // frame-dropping keeps the picture moving on weak SoCs instead of stuttering.

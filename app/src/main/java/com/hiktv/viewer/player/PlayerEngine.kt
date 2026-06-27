@@ -20,15 +20,7 @@ object PlayerEngine {
             libVlc ?: LibVLC(context.applicationContext, buildOptions()).also { libVlc = it }
         }
 
-    private fun buildOptions(): ArrayList<String> = arrayListOf<String>().apply {
-        // Amlogic (Mi Box / S905) crashes in the Mali OpenGL video-output path (SIGSEGV in
-        // libGLES_mali on the AWindowHandler thread) when the surface re-inits. Use the direct
-        // ANativeWindow display (hardware overlay, no GL) on those chips to avoid the crash.
-        if (com.hiktv.viewer.util.DeviceQuirks.isAmlogic) add("--vout=android_display")
-        addAll(baseOptions())
-    }
-
-    private fun baseOptions(): ArrayList<String> = arrayListOf(
+    private fun buildOptions(): ArrayList<String> = arrayListOf(
         // Transport: TCP is artifact-free over LAN; pulls reliable frames from the NVR.
         "--rtsp-tcp",
         // Hardware decode wherever the SoC offers it (H.264 + H.265). This is the single

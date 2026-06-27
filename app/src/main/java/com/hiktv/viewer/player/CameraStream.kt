@@ -29,6 +29,7 @@ class CameraStream(
     private val useTextureView: Boolean = false,
     private val highQuality: Boolean = false,
     private val directRender: Boolean = false,
+    private val directDisplay: Boolean = false,
     private val onState: (State) -> Unit = {}
 ) {
 
@@ -84,6 +85,10 @@ class CameraStream(
             // hardware=false forces software decoding; reserves the scarce H.265 hardware
             // decoder sessions for the fullscreen stream and avoids multi-decoder crashes.
             setHWDecoderEnabled(hardware, false)
+            // Single-surface screens on Amlogic use the direct ANativeWindow display (no OpenGL)
+            // to avoid the Mali GL crash. NOT used on the multi-tile grid, where the hardware
+            // overlay can't clip several SurfaceViews and they'd overlap.
+            if (directDisplay) addOption(":vout=android_display")
             // Disable MediaCodec direct (zero-copy) rendering: on many cheap H.265 TV chips the
             // DR path emits all-green frames. The copy path is slightly heavier but renders
             // correctly. Some chips (Amlogic Mi Box) are the opposite — the copy path is too slow
