@@ -88,7 +88,7 @@ class FullscreenActivity : AppCompatActivity() {
         stream = CameraStream(
             context = this,
             url = url,
-            networkCachingMs = 150,
+            networkCachingMs = 100,       // realtime live view
             muted = false,                // audio decoded; muted via volume so it can be toggled
             hardware = hw,
             // Amlogic needs zero-copy rendering (the copy path leaves the surface green); the
