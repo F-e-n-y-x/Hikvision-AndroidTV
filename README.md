@@ -4,155 +4,147 @@ A simple Android TV app that shows **all the cameras on your Hikvision NVR** on 
 live. It opens straight into the camera wall — no menus to dig through. It works with Hikvision
 **and** EZVIZ cameras, as long as they are added to the one NVR.
 
-It is built to run smoothly on cheap, low-power TVs and TV sticks.
+It is built to run smoothly on cheap, low-power TVs and TV sticks, and is designed for a normal
+remote (D-pad + OK + Back + Volume — no special remote needed).
 
-> **Latest version: 2.2.0**
+> **Latest version: 2.3.0**
 
 ---
 
 ## What it can do
 
 - **Live camera wall** — opens directly to all your cameras in a grid that sizes itself (2×2, 3×3…).
-- **Full screen** — open any camera full screen and flick **left/right** to the next camera.
-- **PTZ (move the camera)** — for pan/tilt cameras like the EZVIZ H8c, move the camera with the
-  D-pad. Works through the NVR, or **directly to the camera over ONVIF** when the NVR can't do it.
-- **Zoom & pan** — zoom into any camera and pan around the zoomed picture.
-- **Playback** — watch recorded footage on a timeline (12-hour clock with AM/PM), scrub back and forth.
-- **Snapshots** — save a still picture from a camera.
-- **Motion alerts** — get a badge/notification when a camera you picked sees motion.
-- **Picture-in-picture** — keep a camera floating in a corner.
-- **Safe & private** — your NVR login is stored encrypted on the device. Everything stays on your
-  home network; no cloud account is used.
+- **Full screen** — open any camera and flick **left/right** to the next camera.
+- **Zoom, Pan & PTZ** — digital zoom up to **5×** and pan around the zoomed image on any camera;
+  real pan/tilt for PTZ cameras (Hikvision via the NVR, **EZVIZ via the EZVIZ cloud**).
+- **Recorded playback** — a 12-hour timeline (AM/PM) you can scrub; the bar auto-hides while playing.
+- **Synced multi-camera playback** — play *all* cameras from the **same point in time** at once.
+- **Snapshots, motion alerts, picture-in-picture.**
+- **Backup & Restore** — save all your settings so you never re-enter them after a reinstall.
+- **Safe & private** — your logins are stored encrypted on the device; live video stays on your
+  home network (only EZVIZ PTZ uses the EZVIZ cloud, exactly like the EZVIZ app does).
 
 ---
 
 ## Install it on your TV
 
-1. Go to the **[Releases](../../releases)** tab of this repo.
-2. Download the APK:
-   - **Not sure which one? Download `app-universal-release.apk`** — it works on any TV.
-   - For smaller downloads: `app-armeabi-v7a-release.apk` (most TV sticks/boxes) or
+1. Go to the **[Releases](../../releases)** tab and download the APK:
+   - **Not sure which one? Download `app-universal-release.apk`** — it runs on any TV.
+   - Smaller options: `app-armeabi-v7a-release.apk` (most TV sticks/boxes) or
      `app-arm64-v8a-release.apk` (newer 64-bit TVs).
-3. Copy the APK to your TV and install it. Easy ways to do that:
-   - Use a "Send files to TV" / "File Commander" app, **or**
-   - Install over USB debugging with `adb install app-universal-release.apk`.
-4. Open **Hik TV Viewer** from your TV's apps.
-
-> Android TV may warn about "unknown sources" — allow it for the file manager you used.
+2. Copy it to your TV and install (via a "Send files to TV" app, or `adb install <file>.apk`).
+3. Open **Hik TV Viewer** from your TV's apps.
 
 ---
 
 ## First-time setup
 
-When you open the app the first time, it asks for your NVR details:
+When you open the app the first time, enter your NVR details:
 
-1. **NVR IP address** — the local IP of your Hikvision NVR (for example `192.168.1.100`).
-   Your TV must be on the **same Wi-Fi/network** as the NVR.
+1. **NVR IP address** (e.g. `192.168.1.100`). Your TV must be on the **same network** as the NVR.
 2. **HTTP port** — usually `80`.
 3. **RTSP port** — usually `554`.
-4. **Username / Password** — an NVR account that is allowed to view live, playback and PTZ.
+4. **Username / Password** — an NVR account with Live View + Playback + PTZ permission.
 5. Press **Connect**.
 
-After this, the app remembers everything and opens straight to the camera wall next time.
-
-### On the NVR (one-time, in the NVR's own web page)
-
-- Turn on **ISAPI / Hikvision-CGI** (Configuration → Network → Advanced → Integration Protocol).
-- Use an account with **Live View + Playback + PTZ** permission.
-- Make sure the **RTSP port (554)** is open.
+On the NVR (one-time, in its web page): enable **ISAPI / Hikvision-CGI**, use an account with
+**Live View + Playback + PTZ**, and make sure the **RTSP port (554)** is open.
 
 ---
 
 ## How to use the remote
 
-This app is made for a normal Android TV remote (like the Mi remote) — just a **D-pad, OK, Back,
-and Volume**. You don't need a special remote.
-
 ### Camera wall (grid)
 
 | Button | What it does |
-|---|---|
+| --- | --- |
 | D-pad | Move between cameras |
 | **OK** | Open the selected camera full screen |
 | **Hold ◀ (left)** | Open Settings |
+| **Hold ▼ (down)** | Synced multi-camera playback |
 
 ### Full screen (one camera)
 
 | Button | What it does |
-|---|---|
+| --- | --- |
 | **◀ / ▶** | Previous / next camera |
-| **OK** | Open this camera's controls & settings |
-| **▲ (up)** | Quick actions (snapshot, audio, picture-in-picture) |
-| **Hold ▼ (down)** | Open Playback (recorded footage) |
+| **OK** | Popup menu (camera settings, zoom/PTZ, playback, snapshot, audio, PiP, app settings) |
+| **▲ (up)** | Open the Zoom / Pan / PTZ screen |
+| **Hold ▼ (down)** | Open this camera's playback |
 | **Hold ◀ (left)** | Open Settings |
 | **Back** | Return to the wall |
 
-### Camera controls screen (zoom / pan / PTZ)
+### Zoom / Pan / PTZ screen
 
 | Button | What it does |
-|---|---|
-| **OK** | Switch mode: **Zoom → Pan → PTZ → Zoom** (PTZ only shows if the camera supports it) |
-| **▲ ▼ / Volume +−** | Zoom in / out |
-| **D-pad** | In **Pan** mode: move around the zoomed picture. In **PTZ** mode: move the camera |
+| --- | --- |
+| **OK** | Switch mode: **Zoom → Pan → PTZ → Zoom** (PTZ only if the camera supports it) |
+| **▲ ▼ / Volume +−** | Zoom in / out (up to 5×) |
+| **D-pad** | In **Pan** mode: move around the zoomed picture · In **PTZ** mode: move the camera |
 | **Back** | Exit |
 
-### Playback (recorded footage)
+### Playback (one camera) / Multi-camera playback
 
 | Button | What it does |
-|---|---|
-| **◀ / ▶** | Scrub back / forward on the timeline |
+| --- | --- |
+| **◀ / ▶** | Scrub back / forward |
 | **▲ / ▼** | Jump ± 1 hour |
 | **OK** | Play / pause |
 | **Back** | Exit |
 
-The timeline bar shrinks out of the way a few seconds after playback starts, so it doesn't cover
-the video.
+---
+
+## PTZ on EZVIZ cameras (e.g. CS-H8c)
+
+EZVIZ cameras don't allow local PTZ — not over ONVIF and not through the NVR (verified). The only
+way to move them is the **EZVIZ cloud**, exactly like the EZVIZ phone app. The app supports this:
+
+1. Open the camera → **OK → Camera settings → "EZVIZ cloud PTZ"**.
+2. Enter your **EZVIZ email or phone number** (with country code, e.g. `+91…`) and **password**.
+   - If you only sign in by QR code, set a password first in the EZVIZ app
+     (Profile → Account Security). Turn **off 2FA**.
+   - The **camera serial is auto-filled** from the NVR. (You can also use **"Auto-fill EZVIZ
+     serial"** to pick the camera from your EZVIZ account.)
+3. Tap **Test PTZ connection** — it logs in, sends a small move, and reports the result.
+4. Then **▲ → OK until it shows PTZ → D-pad moves the camera** (pan/tilt; the H8c has no optical
+   zoom, so use Zoom/Pan mode for close-ups).
+
+> PTZ commands go through EZVIZ's servers (needs internet); live video stays local.
+
+For a true ONVIF camera (e.g. a Hikvision PT camera), use **"Direct camera connection"** instead
+(IP + ONVIF/ISAPI credentials) and PTZ works fully on the LAN.
 
 ---
 
-## Pan/tilt (PTZ) cameras like the EZVIZ H8c
+## Backup & Restore
 
-Some cameras (e.g. **EZVIZ CS-H8c**) can pan and tilt, but the NVR won't pass those controls
-through. The app can talk **directly to the camera over ONVIF** instead.
+So you never type everything again:
 
-1. In the **EZVIZ app**, turn on **ONVIF** for the camera and **create an ONVIF username and
-   password**. ⚠️ This is a *separate* login — not your device password or the verification code.
-2. In Hik TV Viewer: open the camera (press **OK**) → **Direct camera connection**.
-   - The camera's IP is filled in automatically when the NVR knows it.
-   - Enter the **ONVIF username and password**, keep **"Use ONVIF"** ticked, and **Save**.
-3. Tap **Test PTZ connection** — it tells you exactly what works (clock, login, profile, a test move).
-4. Now open **Camera controls**, press **OK** until it shows **PTZ**, and use the D-pad to move the camera.
-
-> The H8c has no optical zoom (it only pans/tilts). Use **Zoom/Pan** mode for digital zoom.
+- **Settings → Backup settings** writes everything to **Downloads/HikTVViewer_backup.json**
+  (no permission needed; it survives an uninstall).
+- **Settings → Restore settings** reads it back and reconnects.
 
 ---
 
-## Make the live view smoother (recommended)
+## Make the live view smoother
 
-If your cameras record in **H.265**, showing several of them at once can be heavy for a cheap TV.
-There's a one-tap fix:
-
-**Settings → "Optimize live (smooth)"** — this sets each camera's small "sub-stream" (the one used
-in the grid) to **H.264 at 15 fps**. That decodes much more easily, so the wall stays smooth.
-Your full-screen / recording quality is **not** changed.
-
-If video ever looks broken or the TV struggles, open **Settings → Video decoding** and try
-**Software** mode.
+If your cameras record in **H.265**, several at once can be heavy for a cheap TV. One-tap fix:
+**Settings → "Optimize live (smooth)"** sets each camera's grid sub-stream to **H.264 @ 15 fps**
+(full-screen / recording quality is unchanged). If video ever looks broken, try
+**Settings → Video decoding → Software**.
 
 ---
 
-## Build it yourself (for developers)
+## Build it yourself (developers)
 
-You need **Android Studio (2024.1+)** with **JDK 17** and the Android SDK.
+Needs **Android Studio (2024.1+)**, **JDK 17**, Android SDK.
 
 ```bash
-# debug build (no signing needed)
 ./gradlew assembleDebug          # -> app/build/outputs/apk/debug/app-debug.apk
 ./gradlew installDebug           # install to a connected TV via adb
 ```
 
-To build a **signed release** (the APKs in the Releases tab), create a `keystore.properties`
-file in the project root pointing to your own signing key:
+For a **signed release**, create `keystore.properties` in the project root pointing at your own key:
 
 ```properties
 storeFile=release.keystore
@@ -161,61 +153,58 @@ keyAlias=YOUR_ALIAS
 keyPassword=YOUR_PASSWORD
 ```
 
-Then:
-
 ```bash
-./gradlew assembleRelease        # -> app/build/outputs/apk/release/*.apk
+./gradlew assembleRelease         # -> app/build/outputs/apk/release/*.apk (per-ABI + universal)
 ```
 
 > The signing key (`release.keystore`, `keystore.properties`) is **not** in this repo on purpose —
 > keep yours private. Without it, the release build is unsigned.
 
-The build also produces per-CPU APKs (`armeabi-v7a`, `arm64-v8a`, `x86`) plus a `universal` one.
-
 ---
 
 ## How it works (tech)
 
-- **Kotlin**, single Hikvision NVR, all cameras are NVR channels.
-- **LibVLC** plays the RTSP streams (handles both H.264 and H.265, with hardware decoding and
-  low-latency tuning). This is why LibVLC is used instead of ExoPlayer — ExoPlayer's RTSP doesn't
-  reliably play H.265.
-- **Hikvision ISAPI** (digest auth) is used to find cameras, take snapshots, search recordings and
-  send PTZ. **ONVIF** (SOAP) is used for direct-to-camera PTZ.
-- The grid uses each camera's small **sub-stream**; full screen uses the high-quality main stream.
-- Streams are released when you leave the screen, so a weak TV is never decoding more than it must.
+- **Kotlin**, single Hikvision NVR; all cameras are NVR channels.
+- **LibVLC** plays the RTSP streams (H.264 and H.265, hardware decoding, low-latency tuning).
+  ExoPlayer's RTSP doesn't reliably do H.265, which is why LibVLC is used.
+- **Hikvision ISAPI** (digest auth) for discovery, snapshots, recordings and Hikvision PTZ;
+  **ONVIF** (SOAP) for direct-to-camera PTZ; **EZVIZ cloud** for EZVIZ PTZ.
+- Grid uses each camera's small **sub-stream**; full screen uses the high-quality main stream.
+  Streams are released when you leave a screen so a weak TV never decodes more than it must.
+- On cheap H.265 TV chips, MediaCodec "direct rendering" is disabled to avoid green frames.
 
-```
+```text
 app/src/main/java/com/hiktv/viewer/
-├─ core/Session.kt              the active NVR + camera list (in memory)
+├─ core/Session.kt              active NVR + camera list (in memory)
 ├─ data/
 │  ├─ model/{Nvr,Camera}.kt     connection + camera info
-│  ├─ store/NvrStore.kt         encrypted settings storage
-│  ├─ RtspUrls.kt               builds the live / playback stream links
-│  ├─ isapi/IsapiClient.kt      talks to the NVR (discover, PTZ, snapshot, recordings)
+│  ├─ store/NvrStore.kt         encrypted settings + backup/restore JSON
+│  ├─ RtspUrls.kt               builds live / playback stream links
+│  ├─ isapi/IsapiClient.kt      NVR API (discover, PTZ, snapshot, recordings, optimize)
 │  ├─ onvif/OnvifPtz.kt         direct-to-camera PTZ over ONVIF
-│  └─ ptz/PtzController.kt      one PTZ interface (NVR / direct ISAPI / ONVIF)
+│  ├─ ezviz/EzvizCloud.kt       EZVIZ cloud login + PTZ + device list
+│  └─ ptz/PtzController.kt      one PTZ interface (NVR / ISAPI / ONVIF / EZVIZ cloud)
+├─ player/{PlayerEngine,CameraStream}.kt   shared LibVLC + one stream per surface
 └─ ui/
-   ├─ setup/SetupActivity.kt        first-run connection screen
-   ├─ grid/                         the live camera wall
-   ├─ fullscreen/                   one camera, switch with ◀ ▶
-   ├─ camera/CameraSettingsActivity per-camera page
-   ├─ control/ControlActivity       zoom / pan / PTZ
-   ├─ playback/                     recorded footage + timeline
-   └─ settings/SettingsActivity     app settings
+   ├─ setup/         first-run connection screen
+   ├─ grid/          live camera wall
+   ├─ fullscreen/    one camera, switch with ◀ ▶
+   ├─ camera/        per-camera settings page
+   ├─ control/       zoom / pan / PTZ
+   ├─ playback/      recorded footage (single + synced multi-camera)
+   └─ settings/      app settings, backup/restore, optimize
 ```
 
 ---
 
 ## Troubleshooting
 
-- **"No cameras found"** — the NVR account is missing Live View permission, or ISAPI is turned off.
-- **Wrong password / locked out** — Hikvision locks an account after several wrong tries; wait or
-  unlock it in the NVR web page.
-- **A tile is black but shows the name** — that camera is offline or its sub-stream is disabled.
-- **PTZ doesn't move** — open the camera → **Test PTZ connection**; for EZVIZ make sure you used the
-  **ONVIF** username/password, not the device password.
-- **Video glitches or the TV struggles** — run **Settings → Optimize live (smooth)**, or set
+- **"No cameras found"** — the NVR account lacks Live View permission, or ISAPI is off.
+- **A tile is black/green** — green frames are fixed in 2.3.0; if a tile stays black the camera is
+  offline or its sub-stream is disabled.
+- **EZVIZ PTZ doesn't move** — open the camera → **Test PTZ connection**; use your EZVIZ
+  **account** login (not the device verification code), make sure the serial is right, and 2FA is off.
+- **Video glitches / TV struggles** — run **Settings → Optimize live (smooth)**, or set
   **Video decoding → Software**.
 
 ---
