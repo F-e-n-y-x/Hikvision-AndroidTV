@@ -94,6 +94,26 @@ class IsapiClient(private val nvr: Nvr) {
         null
     }
 
+    /**
+     * The EZVIZ cloud device serial for a channel = the last 9 chars of the NVR's stored
+     * serialNumber (e.g. "...CCRRBC5654797" -> "BC5654797"). Lets the app pre-fill it for
+     * EZVIZ cloud PTZ without the user reading it off the camera.
+     */
+    suspend fun cameraSerial(channel: Int): String? = withContext(Dispatchers.IO) {
+        val xml = getOrNull("/ISAPI/ContentMgmt/InputProxy/channels") ?: return@withContext null
+        val blocks = Regex("<InputProxyChannel\\b[^>]*>(.*?)</InputProxyChannel>", RegexOption.DOT_MATCHES_ALL)
+            .findAll(xml).map { it.groupValues[1] }
+        for (block in blocks) {
+            val id = Regex("<id>\\s*(\\d+)\\s*</id>").find(block)?.groupValues?.get(1)?.toIntOrNull()
+            if (id == channel) {
+                val full = Regex("<serialNumber>(.*?)</serialNumber>").find(block)
+                    ?.groupValues?.get(1)?.trim().orEmpty()
+                return@withContext full.takeIf { it.length >= 9 }?.takeLast(9)
+            }
+        }
+        null
+    }
+
     /** Channel numbers that currently have a live stream (= online), from Streaming/channels. */
     private fun streamingChannelSet(xml: String): Set<Int> {
         val set = LinkedHashSet<Int>()

@@ -108,9 +108,14 @@ class MultiPlaybackActivity : AppCompatActivity() {
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply { gravity = Gravity.BOTTOM or Gravity.END; setMargins(m, m, m, m) })
 
+            // If the last camera is alone on its row, let it span the leftover columns so no
+            // space is wasted (e.g. 3 cams: cam3 spans the full bottom row).
+            val colInRow = i % cols
+            val lastAlone = i == cams.size - 1 && cams.size % cols != 0
+            val span = if (lastAlone) cols - colInRow else 1
             val lp = GridLayout.LayoutParams().apply {
                 width = 0; height = 0
-                columnSpec = GridLayout.spec(i % cols, 1f)
+                columnSpec = GridLayout.spec(colInRow, span, span.toFloat())
                 rowSpec = GridLayout.spec(i / cols, 1f)
                 setGravity(Gravity.FILL)     // make each cell fill its grid area (not wrap small)
                 setMargins(m, m, m, m)

@@ -50,6 +50,8 @@ class SettingsActivity : AppCompatActivity() {
             Row("Alerts", alertsLabel()) { chooseAlerts() },
             Row("Diagnostics", "Check what the NVR returns") { diagnostics() },
             Row("Playback", "View recorded footage") { playback() },
+            Row("Backup settings", "Save everything to Downloads") { backup() },
+            Row("Restore settings", "Re-import a saved backup") { restore() },
             Row("About", appVersion()) { /* info only */ }
         )
 
@@ -229,6 +231,40 @@ class SettingsActivity : AppCompatActivity() {
                 startActivity(Intent(this, PlaybackActivity::class.java)
                     .putExtra(PlaybackActivity.EXTRA_CHANNEL, cams[which].channel))
             }
+            .show()
+    }
+
+    private fun backup() {
+        val msg = runCatching { com.hiktv.viewer.util.BackupManager.export(this, store.exportJson()) }
+            .fold(
+                { "Saved to $it\n\nKeep this file — restore it after a reinstall to avoid re-entering everything." },
+                { "Backup failed: ${it.message}" }
+            )
+        MaterialAlertDialogBuilder(this).setTitle("Backup").setMessage(msg)
+            .setPositiveButton("OK", null).show()
+    }
+
+    private fun restore() {
+        val json = runCatching { com.hiktv.viewer.util.BackupManager.import(this) }.getOrNull()
+        if (json == null) {
+            MaterialAlertDialogBuilder(this).setTitle("Restore")
+                .setMessage("No backup found (Downloads/${com.hiktv.viewer.util.BackupManager.FILE_NAME}).")
+                .setPositiveButton("OK", null).show()
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Restore settings?")
+            .setMessage("This replaces current settings with the saved backup and reconnects.")
+            .setPositiveButton("Restore") { _, _ ->
+                runCatching { store.importJson(json) }
+                store.load()?.let { Session.connect(it) }
+                Session.cameras = store.loadCameras()
+                Session.gridDirty = true
+                startActivity(Intent(this, SetupActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+                finish()
+            }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 

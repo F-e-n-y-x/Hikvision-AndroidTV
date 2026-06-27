@@ -67,22 +67,65 @@ class EzvizCloud(private var apiDomain: String = "apiieu.ezvizlife.com") {
     /** command = UP/DOWN/LEFT/RIGHT, action = START/STOP, speed 1..10. */
     suspend fun ptz(serial: String, command: String, action: String, speed: Int = 5): Boolean =
         withContext(Dispatchers.IO) {
-            val sid = sessionId ?: return@withContext false
-            val form = FormBody.Builder()
-                .add("command", command)
-                .add("action", action)
-                .add("channelNo", "1")
-                .add("speed", speed.coerceIn(1, 10).toString())
-                .add("uuid", UUID.randomUUID().toString())
-                .add("serial", serial)
-                .build()
-            runCatching {
-                client.newCall(
-                    base("https://$apiDomain/v3/devices/$serial/ptzcontrol")
-                        .addHeader("sessionId", sid).put(form).build()
-                ).execute().use { it.isSuccessful }
-            }.getOrDefault(false)
+            val body = ptzRaw(serial, command, action, speed) ?: return@withContext false
+            int(body, "code") == 200
         }
+
+    private fun ptzRaw(serial: String, command: String, action: String, speed: Int): String? {
+        val sid = sessionId ?: return null
+        val form = FormBody.Builder()
+            .add("command", command)
+            .add("action", action)
+            .add("channelNo", "1")
+            .add("speed", speed.coerceIn(1, 10).toString())
+            .add("uuid", UUID.randomUUID().toString())
+            .add("serial", serial)
+            .build()
+        return runCatching {
+            client.newCall(
+                base("https://$apiDomain/v3/devices/$serial/ptzControl")
+                    .addHeader("sessionId", sid).put(form).build()
+            ).execute().use { it.body?.string().orEmpty() }
+        }.getOrNull()
+    }
+
+    /** Sends a tiny test move and reports the cloud's exact result (for the Test PTZ button). */
+    suspend fun diagnosePtz(serial: String): String = withContext(Dispatchers.IO) {
+        if (sessionId == null) return@withContext "Not logged in"
+        val body = ptzRaw(serial, "LEFT", "START", 3) ?: return@withContext "PTZ request failed (network)"
+        ptzRaw(serial, "LEFT", "STOP", 3)
+        val code = int(body, "code")
+        val msg = str(body, "message") ?: str(body, "msg")
+        when (code) {
+            200 -> "PTZ OK — the camera should have nudged left. D-pad will work."
+            20002 -> "code 20002: device not found — the serial '$serial' is wrong (use Auto-fill EZVIZ serial)."
+            20006, 20007, 20008 -> "code $code: camera offline / unreachable from the cloud."
+            60020 -> "code 60020: this camera reports NO PTZ support in the cloud."
+            else -> "PTZ response code $code ${msg.orEmpty()}".trim()
+        }
+    }
+
+    /** Logged-in user's cameras: list of (serial, name). */
+    suspend fun listDevices(): List<Pair<String, String>> = withContext(Dispatchers.IO) {
+        val sid = sessionId ?: return@withContext emptyList()
+        val url = "https://$apiDomain/v3/userdevices/v1/resources/pagelist" +
+            "?groupId=-1&limit=50&offset=0&filter=CLOUD,STATUS,FEATURE,P2P,CONNECTION,SWITCH,CHANNEL"
+        val body = runCatching {
+            client.newCall(base(url).addHeader("sessionId", sid).get().build())
+                .execute().use { it.body?.string().orEmpty() }
+        }.getOrNull() ?: return@withContext emptyList()
+        val out = ArrayList<Pair<String, String>>()
+        runCatching {
+            val arr = org.json.JSONObject(body).optJSONArray("deviceInfos") ?: return@runCatching
+            for (i in 0 until arr.length()) {
+                val d = arr.getJSONObject(i)
+                val serial = d.optString("deviceSerial").takeIf { it.isNotBlank() } ?: continue
+                val name = d.optString("name").takeIf { it.isNotBlank() } ?: serial
+                out += serial to name
+            }
+        }
+        out
+    }
 
     private fun base(url: String) = Request.Builder()
         .url(url)

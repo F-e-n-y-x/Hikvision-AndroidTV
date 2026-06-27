@@ -162,6 +162,32 @@ class NvrStore(context: Context) {
     fun setEzvizSerial(channel: Int, serial: String?) =
         prefs.edit().putString("ezviz_serial_$channel", serial).apply()
 
+    // ---- Backup / restore (all settings as JSON) ---------------------------
+
+    /** Serialize every stored setting (NVR, cameras, layout, alerts, direct/EZVIZ PTZ) to JSON. */
+    fun exportJson(): String {
+        val obj = org.json.JSONObject()
+        for ((k, v) in prefs.all) if (v != null) obj.put(k, v)
+        return obj.toString()
+    }
+
+    /** Replace all settings from a JSON backup produced by [exportJson]. */
+    fun importJson(json: String) {
+        val obj = org.json.JSONObject(json)
+        val e = prefs.edit()
+        e.clear()
+        for (key in obj.keys()) {
+            when (val v = obj.get(key)) {
+                is Boolean -> e.putBoolean(key, v)
+                is Int -> e.putInt(key, v)
+                is Long -> e.putInt(key, v.toInt())
+                is Double -> e.putInt(key, v.toInt())
+                else -> e.putString(key, v.toString())
+            }
+        }
+        e.apply()
+    }
+
     companion object {
         private const val K_HOST = "host"
         private const val K_HTTP = "http_port"

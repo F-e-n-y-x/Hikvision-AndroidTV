@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.hiktv.viewer.core.Session
+import com.hiktv.viewer.data.ezviz.EzvizCloud
 import com.hiktv.viewer.data.isapi.IsapiClient
 import com.hiktv.viewer.data.model.Camera
 import com.hiktv.viewer.data.model.Nvr
@@ -69,6 +70,7 @@ class CameraSettingsActivity : AppCompatActivity() {
         val rows = listOf(
             Row("PTZ & zoom control", controlSubtitle()) { openControl() },
             Row("EZVIZ cloud PTZ", ezvizSubtitle()) { editEzviz() },
+            Row("Auto-fill EZVIZ serial", "Pick this camera from your EZVIZ account") { autoEzvizSerial() },
             Row("Direct camera connection", directSubtitle()) { editDirect() },
             Row("Test PTZ connection", "Check why PTZ does / doesn't work") { testPtz() },
             Row("Playback", "View this camera's recordings") { openPlayback() },
@@ -135,6 +137,16 @@ class CameraSettingsActivity : AppCompatActivity() {
             email, pass, serial
         ).forEach { view.addView(it) }
 
+        // Auto-fill this camera's EZVIZ serial from the NVR if we don't have one yet.
+        if (serial.text.isNullOrBlank()) {
+            Session.isapi?.let { isapi ->
+                lifecycleScope.launch {
+                    runCatching { isapi.cameraSerial(camera.channel) }.getOrNull()
+                        ?.let { if (serial.text.isNullOrBlank()) serial.setText(it) }
+                }
+            }
+        }
+
         val dlg = MaterialAlertDialogBuilder(this)
             .setTitle("EZVIZ cloud PTZ")
             .setView(view)
@@ -150,6 +162,40 @@ class CameraSettingsActivity : AppCompatActivity() {
             .setNegativeButton("Cancel", null)
             .show()
         DialogIme.attach(dlg, this)
+    }
+
+    /** Log in to EZVIZ, list the account's cameras, and let the user pick the right serial. */
+    private fun autoEzvizSerial() {
+        val acct = store.ezvizAccount
+        val pass = store.ezvizPassword
+        if (acct == null || pass == null) {
+            toast("Enter your EZVIZ account first (EZVIZ cloud PTZ)"); return
+        }
+        val dlg = MaterialAlertDialogBuilder(this)
+            .setTitle("EZVIZ").setMessage("Logging in & fetching your cameras…")
+            .setCancelable(false).show()
+        lifecycleScope.launch {
+            val cloud = EzvizCloud()
+            val err = cloud.login(acct, pass)
+            if (err != null) { dlg.setMessage(err); dlg.setCancelable(true); return@launch }
+            val devices = cloud.listDevices()
+            dlg.dismiss()
+            if (devices.isEmpty()) {
+                MaterialAlertDialogBuilder(this@CameraSettingsActivity).setTitle("EZVIZ")
+                    .setMessage("No cameras found on this EZVIZ account.")
+                    .setPositiveButton("OK", null).show()
+                return@launch
+            }
+            val labels = devices.map { "${it.second}   (${it.first})" }.toTypedArray()
+            MaterialAlertDialogBuilder(this@CameraSettingsActivity)
+                .setTitle("Which device is \"${camera.name}\"?")
+                .setItems(labels) { _, which ->
+                    store.setEzvizSerial(camera.channel, devices[which].first)
+                    toast("Serial set: ${devices[which].first}")
+                    render()
+                }
+                .show()
+        }
     }
 
     // ---- Direct connection -------------------------------------------------
@@ -235,9 +281,10 @@ class CameraSettingsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val msg = when {
                 serial != null && acct != null && pass != null -> {
-                    val err = com.hiktv.viewer.data.ezviz.EzvizCloud().login(acct, pass)
-                    if (err == null) "EZVIZ cloud login OK. PTZ should work — open controls, OK to PTZ mode, move with the D-pad."
-                    else "EZVIZ cloud PTZ: $err"
+                    val cloud = EzvizCloud()
+                    val err = cloud.login(acct, pass)
+                    if (err != null) "EZVIZ login failed: $err"
+                    else "Login OK (serial $serial). " + cloud.diagnosePtz(serial)
                 }
                 direct != null && onvif ->
                     OnvifPtz(direct.host, direct.httpPort, direct.username, direct.password).diagnose()

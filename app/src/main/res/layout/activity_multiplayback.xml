@@ -16,18 +16,19 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:paddingVertical="4dp"
+        android:paddingVertical="2dp"
         android:textColor="@color/text_secondary"
-        android:textSize="13sp" />
+        android:textSize="12sp"
+        android:visibility="gone" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="#CC0B0E11"
-        android:paddingHorizontal="28dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="12dp">
+        android:paddingHorizontal="24dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="6dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -40,7 +41,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/accent"
-                android:textSize="20sp"
+                android:textSize="16sp"
                 android:fontFamily="sans-serif-medium"
                 android:text="--:--" />
 
@@ -65,7 +66,7 @@
         <com.hiktv.viewer.ui.playback.TimelineView
             android:id="@+id/timeline"
             android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginTop="6dp" />
+            android:layout_height="34dp"
+            android:layout_marginTop="3dp" />
     </LinearLayout>
 </LinearLayout>

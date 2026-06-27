@@ -48,6 +48,7 @@ class ControlActivity : AppCompatActivity() {
     private var ptzActive = false
     private var warned = false
     private var hasDirect = false
+    private var isEzviz = false
 
     private var mode = Mode.ZOOM
 
@@ -84,6 +85,7 @@ class ControlActivity : AppCompatActivity() {
         val acct = store.ezvizAccount
         val pass = store.ezvizPassword
         val ezviz = serial != null && acct != null && pass != null
+        isEzviz = ezviz
         hasDirect = direct != null || ezviz
         ptz = when {
             ezviz ->
@@ -122,6 +124,14 @@ class ControlActivity : AppCompatActivity() {
 
     private fun detectPtz() {
         val controller = ptz ?: return
+        // EZVIZ is a known pan/tilt camera — offer PTZ immediately (cloud login is slow, and
+        // gating on it made PTZ look "not responding"); warm the login in the background.
+        if (isEzviz) {
+            ptzSupported = true
+            updateOverlay()
+            lifecycleScope.launch { runCatching { controller.probe() } }
+            return
+        }
         lifecycleScope.launch {
             ptzSupported = runCatching { controller.probe() }.getOrDefault(false)
             updateOverlay()
