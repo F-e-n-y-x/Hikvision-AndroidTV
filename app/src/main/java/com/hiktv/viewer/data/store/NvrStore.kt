@@ -189,8 +189,15 @@ class NvrStore(context: Context) {
             when (val v = obj.get(key)) {
                 is Boolean -> e.putBoolean(key, v)
                 is Int -> e.putInt(key, v)
-                is Long -> e.putInt(key, v.toInt())
-                is Double -> e.putInt(key, v.toInt())
+                // org.json widens whole numbers to Long. Every numeric pref in this app is read
+                // via getInt, so keep in-range values as Int (reading a Long back via getInt would
+                // throw ClassCastException). Only widen to Long when the value genuinely overflows
+                // Int — better than the old code, which silently truncated via toInt().
+                is Long -> if (v in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong())
+                               e.putInt(key, v.toInt()) else e.putLong(key, v)
+                is Double -> if (v == Math.floor(v) && !v.isInfinite() &&
+                                 v >= Int.MIN_VALUE.toDouble() && v <= Int.MAX_VALUE.toDouble())
+                                 e.putInt(key, v.toInt()) else e.putString(key, v.toString())
                 else -> e.putString(key, v.toString())
             }
         }

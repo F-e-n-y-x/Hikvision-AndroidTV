@@ -17,7 +17,11 @@ import java.util.concurrent.TimeUnit
  *
  * The API is undocumented and may change; failures are reported, not crashed.
  */
-class EzvizCloud(private var apiDomain: String = "apiieu.ezvizlife.com") {
+class EzvizCloud(initialApiDomain: String = "apiieu.ezvizlife.com") {
+
+    // Rewritten on region redirect during login() and read by ptzRaw()/listDevices() on other
+    // IO threads, so it must be volatile to publish across threads.
+    @Volatile private var apiDomain: String = initialApiDomain
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)

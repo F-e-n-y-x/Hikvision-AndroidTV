@@ -137,7 +137,11 @@ class GridAdapter(
             stream = CameraStream(
                 context = context,
                 url = url,
-                networkCachingMs = 100,    // low latency for a realtime wall (LAN)
+                // 300 ms jitter buffer: low enough to stay "live" on a LAN wall, but large enough
+                // to absorb network jitter. At ~100 ms the buffer underruns on the slightest blip,
+                // which shows up as white/glitchy/torn tiles. 300 ms trades ~200 ms of latency
+                // (imperceptible for CCTV) for a stable picture.
+                networkCachingMs = 300,
                 muted = true,
                 hardware = hardware
             ) { state ->

@@ -47,7 +47,8 @@ object BackupManager {
             }
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: error("Could not create backup file")
-            resolver.openOutputStream(uri).use { it!!.write(json.toByteArray()) }
+            val out = resolver.openOutputStream(uri) ?: error("Could not open backup file for writing")
+            out.use { it.write(json.toByteArray()) }
             return "Downloads/$FILE_NAME"
         }
         error("Could not write backup")

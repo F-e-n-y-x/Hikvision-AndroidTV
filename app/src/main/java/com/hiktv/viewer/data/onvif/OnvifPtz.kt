@@ -1,6 +1,7 @@
 package com.hiktv.viewer.data.onvif
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -39,11 +40,17 @@ class OnvifPtz(
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
 
-    private var mediaXAddr: String? = null
-    private var ptzXAddr: String? = null
-    private var profileToken: String? = null
-    private var clockOffsetMs = 0L
+    // These are published by prepare()/diagnose() on one IO thread and read by continuousMove()/
+    // stop() on another, so they must be volatile to be visible across coroutine threads.
+    @Volatile private var mediaXAddr: String? = null
+    @Volatile private var ptzXAddr: String? = null
+    @Volatile private var profileToken: String? = null
+    @Volatile private var clockOffsetMs = 0L
     @Volatile private var ready = false
+    // True between a continuousMove() and its stop(). If the user releases the key while the first
+    // move is still running prepare() (several seconds), stop() clears this so the pending move
+    // skips its START — otherwise a START fired after the STOP pans the camera forever.
+    @Volatile private var moving = false
 
     suspend fun ensureReady(): Boolean = withContext(Dispatchers.IO) {
         if (ready) return@withContext true
@@ -73,10 +80,12 @@ class OnvifPtz(
 
     suspend fun continuousMove(panX: Float, tiltY: Float, zoom: Float): Boolean =
         withContext(Dispatchers.IO) {
+            moving = true
             if (!ensureReady()) return@withContext false
+            if (!moving) return@withContext false   // released during prepare → don't start
             val body = """
                 <ContinuousMove>
-                  <ProfileToken>$profileToken</ProfileToken>
+                  <ProfileToken>${xmlEscape(profileToken.orEmpty())}</ProfileToken>
                   <Velocity>
                     <PanTilt x="$panX" y="$tiltY" xmlns="http://www.onvif.org/ver10/schema"/>
                     <Zoom x="$zoom" xmlns="http://www.onvif.org/ver10/schema"/>
@@ -86,16 +95,25 @@ class OnvifPtz(
             runCatching { soap(ptzXAddr!!, PTZ_NS, "ContinuousMove", body); true }.getOrDefault(false)
         }
 
+    // STOP is safety-critical: never gate it on `ready` alone (a release during the first move's
+    // prepare() would drop it and leave the camera moving). Make sure we're prepared, then retry.
     suspend fun stop(): Boolean = withContext(Dispatchers.IO) {
-        if (!ready || ptzXAddr == null || profileToken == null) return@withContext false
+        moving = false
+        if (!ready) runCatching { prepare() }
+        val addr = ptzXAddr ?: return@withContext false
+        val token = profileToken ?: return@withContext false
         val body = """
             <Stop>
-              <ProfileToken>$profileToken</ProfileToken>
+              <ProfileToken>${xmlEscape(token)}</ProfileToken>
               <PanTilt>true</PanTilt>
               <Zoom>true</Zoom>
             </Stop>
         """.trimIndent()
-        runCatching { soap(ptzXAddr!!, PTZ_NS, "Stop", body); true }.getOrDefault(false)
+        repeat(3) {
+            if (runCatching { soap(addr, PTZ_NS, "Stop", body); true }.getOrDefault(false))
+                return@withContext true
+        }
+        false
     }
 
     /** Step-by-step report so the user can see exactly where ONVIF fails (auth, profile, move). */
@@ -129,7 +147,7 @@ class OnvifPtz(
                             "<PanTilt x=\"0.3\" y=\"0\" xmlns=\"http://www.onvif.org/ver10/schema\"/>" +
                             "<Zoom x=\"0\" xmlns=\"http://www.onvif.org/ver10/schema\"/></Velocity></ContinuousMove>")
                 }
-                Thread.sleep(400)
+                delay(400)
                 runCatching { stop() }
                 append("• Test move: ${mv.fold({ "ok — camera should have nudged right" }, { "FAILED — ${reason(it)}" })}\n")
             }
@@ -138,6 +156,11 @@ class OnvifPtz(
     }
 
     private fun reason(t: Throwable) = t.message ?: t.javaClass.simpleName
+
+    /** Escape the five XML predefined entities so user-supplied text can't break the envelope. */
+    private fun xmlEscape(s: String): String = s
+        .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace("\"", "&quot;").replace("'", "&apos;")
 
     // ---- clock sync (unauthenticated) -------------------------------------
 
@@ -195,10 +218,13 @@ class OnvifPtz(
         }.digest()
         val digestB64 = android.util.Base64.encodeToString(sha, android.util.Base64.NO_WRAP)
         val nonceB64 = android.util.Base64.encodeToString(nonce, android.util.Base64.NO_WRAP)
+        // The password digest is hashed from the raw password (correct), but the username is
+        // interpolated into the XML literally, so it must be XML-escaped or a '&'/'<'/'>' in it
+        // would corrupt the envelope.
         return """
             <Security s:mustUnderstand="1" xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
               <UsernameToken>
-                <Username>$user</Username>
+                <Username>${xmlEscape(user)}</Username>
                 <Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">$digestB64</Password>
                 <Nonce EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary">$nonceB64</Nonce>
                 <Created xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">$created</Created>
