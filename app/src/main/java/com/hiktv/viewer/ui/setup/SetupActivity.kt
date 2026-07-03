@@ -223,7 +223,10 @@ class SetupActivity : AppCompatActivity() {
 
         Session.connect(nvr)
         lifecycleScope.launch {
-            val err = Session.isapi!!.testConnection()
+            // testConnection() returns null on success; only substitute a message if connect()
+            // failed to create the client at all (don't turn a null-success into a false error).
+            val client = Session.isapi
+            val err = if (client == null) "Could not initialise connection" else client.testConnection()
             if (err != null) {
                 setBusy(false)
                 setStatus(err, error = true)

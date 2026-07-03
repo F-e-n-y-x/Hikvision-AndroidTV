@@ -54,6 +54,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
     private var playing = false
     private var anchorElapsed = 0L
     private var hasPlayed = false
+    private var playGen = 0
 
     // Ignore the leftover ▼ key-up/repeats from the grid long-press that launched us, so that
     // press doesn't immediately scrub. Real remote commands register after this.
@@ -68,8 +69,16 @@ class MultiPlaybackActivity : AppCompatActivity() {
         binding = ActivityMultiplaybackBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        cams += Session.cameras.filter { it.online }
-        if (cams.isEmpty() || Session.nvr == null) { finish(); return }
+        val online = Session.cameras.filter { it.online }
+        if (online.isEmpty() || Session.nvr == null) { finish(); return }
+        // Cap simultaneous full-res decoders: N main-stream H.264/H.265 players at once exhausts
+        // MediaCodec on weak TVs and can crash/reboot them. Show the first MAX_CELLS synced.
+        cams += online.take(MAX_CELLS)
+        if (online.size > MAX_CELLS) {
+            android.widget.Toast.makeText(
+                this, "Showing first $MAX_CELLS of ${online.size} cameras", android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
 
         buildGrid()
 
@@ -152,7 +161,9 @@ class MultiPlaybackActivity : AppCompatActivity() {
     // ---- Controls ----------------------------------------------------------
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (SystemClock.elapsedRealtime() < acceptKeysAt) return true   // swallow the launching ▼
+        // Swallow only the leftover ▼ from the grid long-press that launched us — not every key
+        // (so an immediate BACK still works).
+        if (SystemClock.elapsedRealtime() < acceptKeysAt && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) return true
         return onCmd(keyCode, event)
     }
 
@@ -195,6 +206,9 @@ class MultiPlaybackActivity : AppCompatActivity() {
         anchorElapsed = SystemClock.elapsedRealtime()
         playing = true
         hasPlayed = true
+        // Token this play session so stale staggered play() runnables from a prior session (e.g.
+        // after a scrub → releasePlayers) can't call play() on an already-released MediaPlayer.
+        val gen = ++playGen
         binding.status.text = "Playing ${cams.size} cameras…"
         cams.forEachIndexed { i, cam ->
             val url = RtspUrls.playback(nvr, cam, Date(fromPseudo), Date(windowEnd))
@@ -213,7 +227,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
             media.release()
             players[i] = mp
             // Stagger so we don't allocate every decoder in the same instant (crash-prone on weak TVs).
-            ui.postDelayed({ if (playing) runCatching { mp.play() } }, i * 300L)
+            ui.postDelayed({ if (playing && gen == playGen) runCatching { mp.play() } }, i * 300L)
         }
         startUpdater()
     }
@@ -253,6 +267,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
     }
 
     private fun releasePlayers() {
+        playGen++                       // invalidate any pending staggered play() runnables
         ui.removeCallbacks(advance)
         for (i in players.indices) {
             players[i]?.let {
@@ -287,5 +302,8 @@ class MultiPlaybackActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    companion object
+    companion object {
+        /** Max cameras decoded at once in synced playback (guards weak TVs from MediaCodec exhaustion). */
+        private const val MAX_CELLS = 9
+    }
 }

@@ -50,6 +50,9 @@ class PlaybackActivity : AppCompatActivity() {
     /** Wall-clock anchor: pseudo-time [playFrom] corresponds to elapsedRealtime [playAnchorElapsed]. */
     private var playAnchorElapsed = 0L
 
+    /** Were we playing when the screen was backgrounded? Used to resume on return. */
+    private var resumeOnStart = false
+
     private val ui = Handler(Looper.getMainLooper())
     // 12-hour clock with AM/PM.
     private val clock = SimpleDateFormat("hh:mm:ss a", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
@@ -256,6 +259,30 @@ class PlaybackActivity : AppCompatActivity() {
         }
         player = null
         playing = false
+    }
+
+    // Release the decoder/surface while another screen covers us (matches every other video
+    // screen). Without this the player keeps rendering into a destroyed SurfaceView — the crash
+    // class weak SoCs hit — and holds a hardware decoder in the background.
+    override fun onStop() {
+        resumeOnStart = playing
+        releasePlayer()
+        super.onStop()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Rebuild from the current playhead on return (wait for the SurfaceView to be recreated,
+        // like FullscreenActivity, so we don't grab an uninitialized buffer → green frame).
+        if (resumeOnStart && player == null && !isFinishing) {
+            resumeOnStart = false
+            binding.videoLayout.postDelayed({
+                if (player == null && !isFinishing &&
+                    lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                    startPlaybackFrom(playhead)
+                }
+            }, 350)
+        }
     }
 
     override fun onDestroy() {

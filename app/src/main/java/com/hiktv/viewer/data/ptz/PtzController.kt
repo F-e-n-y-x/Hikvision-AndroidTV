@@ -46,7 +46,13 @@ class EzvizCloudPtzController(
     private val password: String,
     private val serial: String
 ) : PtzController {
-    private var lastCommand = "UP"
+    // Written by move() and read by stop(), which can run on different dispatcher threads
+    // (key-down vs key-up) — volatile so stop() always sees the axis move() last set.
+    @Volatile private var lastCommand = "UP"
+    // Set true on key-up (stop), false on key-down (move). If the user releases the key while the
+    // first move() is still logging in, this makes move() skip the START it would otherwise fire
+    // AFTER the STOP — the bug where the camera pans forever.
+    @Volatile private var stopped = true
 
     override suspend fun probe(): Boolean =
         cloud.sessionId != null || cloud.login(account, password) == null
@@ -58,9 +64,18 @@ class EzvizCloudPtzController(
             else -> return true            // zoom unsupported on EZVIZ pan/tilt cams
         }
         lastCommand = command
+        stopped = false
         if (cloud.sessionId == null && cloud.login(account, password) != null) return false
+        if (stopped) return true           // released during login → don't start a move with no stop
         return cloud.ptz(serial, command, "START")
     }
 
-    override suspend fun stop(): Boolean = cloud.ptz(serial, lastCommand, "STOP")
+    // STOP is safety-critical: a dropped STOP means the camera keeps moving. Ensure a session
+    // exists (await the in-flight/first login) before sending, and retry a few times.
+    override suspend fun stop(): Boolean {
+        stopped = true
+        if (cloud.sessionId == null) cloud.login(account, password)
+        repeat(3) { if (cloud.ptz(serial, lastCommand, "STOP")) return true }
+        return false
+    }
 }

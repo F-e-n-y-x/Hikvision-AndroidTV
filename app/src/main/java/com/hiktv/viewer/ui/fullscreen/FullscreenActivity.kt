@@ -88,7 +88,9 @@ class FullscreenActivity : AppCompatActivity() {
         stream = CameraStream(
             context = this,
             url = url,
-            networkCachingMs = 100,       // realtime live view
+            // 250 ms buffer: realtime live view, but enough to ride out jitter so the picture
+            // doesn't break up into white/torn frames the way a ~100 ms buffer does.
+            networkCachingMs = 250,
             muted = false,                // audio decoded; muted via volume so it can be toggled
             hardware = hw,
             // Amlogic needs zero-copy rendering (the copy path leaves the surface green); the

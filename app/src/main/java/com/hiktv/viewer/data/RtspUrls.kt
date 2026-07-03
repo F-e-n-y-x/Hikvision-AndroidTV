@@ -33,10 +33,17 @@ object RtspUrls {
     }
 
     private fun cred(nvr: Nvr): String {
-        val u = URLEncoder.encode(nvr.username, "UTF-8")
-        val p = URLEncoder.encode(nvr.password, "UTF-8")
-        return "$u:$p"
+        return "${encodeUserInfo(nvr.username)}:${encodeUserInfo(nvr.password)}"
     }
+
+    /**
+     * URL-encode a username/password for the `user:pass@host` part of an RTSP URI.
+     * [URLEncoder] does form-encoding, which turns a space into "+"; RTSP/URI userinfo does NOT
+     * decode "+" back to a space, so a password containing a space would authenticate wrong.
+     * Convert "+" to the correct "%20" so spaces (and other specials) survive the round-trip.
+     */
+    private fun encodeUserInfo(s: String): String =
+        URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
     private val HIK_TIME: SimpleDateFormat
         get() = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US).apply {
