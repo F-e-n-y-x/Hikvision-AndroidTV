@@ -31,6 +31,9 @@ class EzvizCloud(initialApiDomain: String = "apiieu.ezvizlife.com") {
     @Volatile var sessionId: String? = null
         private set
 
+    /** Drop the cached session so the next call re-authenticates (used after it expires server-side). */
+    fun invalidateSession() { sessionId = null }
+
     /** Returns null on success, or a human-readable error. Follows EZVIZ region redirects. */
     suspend fun login(account: String, password: String): String? = withContext(Dispatchers.IO) {
         val md5 = md5Hex(password)

@@ -67,6 +67,11 @@ class EzvizCloudPtzController(
         stopped = false
         if (cloud.sessionId == null && cloud.login(account, password) != null) return false
         if (stopped) return true           // released during login → don't start a move with no stop
+        if (cloud.ptz(serial, command, "START")) return true
+        // Failed — the cloud session may have expired after idle (hours). Re-auth once and retry,
+        // otherwise EZVIZ PTZ silently stops working until the app is killed.
+        cloud.invalidateSession()
+        if (cloud.login(account, password) != null || stopped) return stopped
         return cloud.ptz(serial, command, "START")
     }
 
@@ -76,6 +81,11 @@ class EzvizCloudPtzController(
         stopped = true
         if (cloud.sessionId == null) cloud.login(account, password)
         repeat(3) { if (cloud.ptz(serial, lastCommand, "STOP")) return true }
+        // Session may have expired: re-authenticate once and retry the stop (safety-critical).
+        cloud.invalidateSession()
+        if (cloud.login(account, password) == null) {
+            repeat(3) { if (cloud.ptz(serial, lastCommand, "STOP")) return true }
+        }
         return false
     }
 }
