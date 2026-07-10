@@ -13,13 +13,16 @@ import javax.crypto.spec.SecretKeySpec
  * Optional PIN encryption for the settings backup (which contains passwords). Format is a small
  * JSON envelope so restore can detect an encrypted file and prompt for the PIN:
  *
- *   { "hiktv_enc": 1, "salt": b64, "iv": b64, "data": b64(AES-GCM ciphertext) }
+ *   { "hiktv_enc": 1, "salt": b64, "iv": b64, "iter": n, "data": b64(AES-GCM ciphertext) }
  *
- * Key = PBKDF2(HMAC-SHA256, pin, salt). A wrong PIN fails the GCM tag and returns null.
+ * Key = PBKDF2(HMAC-SHA256, pin, salt, iter). A wrong PIN fails the GCM tag and returns null.
+ * The iteration count is stored in the envelope so it can be raised over time without breaking
+ * older backups (files written before "iter" existed used [LEGACY_ITERATIONS]).
  */
 object BackupCrypto {
 
-    private const val ITERATIONS = 60_000
+    private const val ITERATIONS = 210_000        // current cost; stored per-file as "iter"
+    private const val LEGACY_ITERATIONS = 60_000  // pre-"iter" files were all encrypted at this cost
     private const val KEY_BITS = 256
 
     fun isEncrypted(text: String): Boolean =
@@ -29,7 +32,7 @@ object BackupCrypto {
         val rnd = SecureRandom()
         val salt = ByteArray(16).also { rnd.nextBytes(it) }
         val iv = ByteArray(12).also { rnd.nextBytes(it) }
-        val key = deriveKey(pin, salt)
+        val key = deriveKey(pin, salt, ITERATIONS)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
             init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
         }
@@ -38,6 +41,7 @@ object BackupCrypto {
             put("hiktv_enc", 1)
             put("salt", b64(salt))
             put("iv", b64(iv))
+            put("iter", ITERATIONS)
             put("data", b64(ct))
         }.toString()
     }
@@ -48,15 +52,16 @@ object BackupCrypto {
         val salt = unb64(obj.getString("salt"))
         val iv = unb64(obj.getString("iv"))
         val ct = unb64(obj.getString("data"))
+        val iter = obj.optInt("iter", LEGACY_ITERATIONS)   // old files omit it → 60k
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(Cipher.DECRYPT_MODE, deriveKey(pin, salt), GCMParameterSpec(128, iv))
+            init(Cipher.DECRYPT_MODE, deriveKey(pin, salt, iter), GCMParameterSpec(128, iv))
         }
         String(cipher.doFinal(ct), Charsets.UTF_8)
     }.getOrNull()
 
-    private fun deriveKey(pin: String, salt: ByteArray): SecretKeySpec {
+    private fun deriveKey(pin: String, salt: ByteArray, iterations: Int): SecretKeySpec {
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val spec = PBEKeySpec(pin.toCharArray(), salt, ITERATIONS, KEY_BITS)
+        val spec = PBEKeySpec(pin.toCharArray(), salt, iterations, KEY_BITS)
         return SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
     }
 

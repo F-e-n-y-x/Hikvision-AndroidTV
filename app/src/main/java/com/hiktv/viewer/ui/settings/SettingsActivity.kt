@@ -9,6 +9,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.hiktv.viewer.core.Session
 import com.hiktv.viewer.data.model.Camera
 import com.hiktv.viewer.data.store.NvrStore
@@ -288,16 +290,17 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun askPinThenBackup() {
         val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "PIN (4+ digits)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "PIN or passphrase (4+ characters)"
         }
         val dlg = MaterialAlertDialogBuilder(this)
             .setTitle("Backup PIN")
-            .setMessage("You'll enter this PIN to restore. Don't forget it — it can't be recovered.")
+            .setMessage("You'll enter this to restore. A longer passphrase (letters + numbers) is " +
+                "far safer than a short numeric PIN. Don't forget it — it can't be recovered.")
             .setView(input)
             .setPositiveButton("Encrypt & save") { _, _ ->
                 val pin = input.text.toString()
-                if (pin.length < 4) toast("PIN must be at least 4 digits") else doBackup(pin)
+                if (pin.length < 4) toast("Use at least 4 characters") else doBackup(pin)
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -305,17 +308,27 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun doBackup(pin: String?) {
-        val raw = store.exportJson()
-        val payload = if (pin == null) raw else com.hiktv.viewer.util.BackupCrypto.encrypt(raw, pin)
-        val msg = runCatching { com.hiktv.viewer.util.BackupManager.export(this, payload) }.fold(
-            {
-                "Saved to $it" + (if (pin != null) "  (PIN-encrypted)" else "") +
-                    "\n\nKeep this file — restore it after a reinstall to avoid re-entering everything."
-            },
-            { "Backup failed: ${it.message}" }
-        )
-        MaterialAlertDialogBuilder(this).setTitle("Backup").setMessage(msg)
-            .setPositiveButton("OK", null).show()
+        val progress = MaterialAlertDialogBuilder(this)
+            .setTitle("Backing up…").setMessage("Encrypting and saving…").setCancelable(false).show()
+        lifecycleScope.launch {
+            // Off the main thread: PBKDF2 (now ~210k rounds) + AES + Downloads file write can exceed
+            // the ANR budget on a weak TV CPU.
+            val msg = withContext(Dispatchers.IO) {
+                val raw = store.exportJson()
+                val payload = if (pin == null) raw
+                    else com.hiktv.viewer.util.BackupCrypto.encrypt(raw, pin)
+                runCatching { com.hiktv.viewer.util.BackupManager.export(this@SettingsActivity, payload) }.fold(
+                    {
+                        "Saved to $it" + (if (pin != null) "  (PIN-encrypted)" else "") +
+                            "\n\nKeep this file — restore it after a reinstall to avoid re-entering everything."
+                    },
+                    { "Backup failed: ${it.message}" }
+                )
+            }
+            progress.dismiss()
+            MaterialAlertDialogBuilder(this@SettingsActivity).setTitle("Backup").setMessage(msg)
+                .setPositiveButton("OK", null).show()
+        }
     }
 
     private fun restore() {
@@ -332,15 +345,23 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun askPinThenRestore(encrypted: String) {
         val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "Backup PIN"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "Backup PIN / passphrase"
         }
         val dlg = MaterialAlertDialogBuilder(this)
             .setTitle("Encrypted backup")
             .setView(input)
             .setPositiveButton("Unlock") { _, _ ->
-                val plain = com.hiktv.viewer.util.BackupCrypto.decrypt(encrypted, input.text.toString())
-                if (plain == null) toast("Wrong PIN") else confirmRestore(plain)
+                val pin = input.text.toString()
+                val progress = MaterialAlertDialogBuilder(this)
+                    .setTitle("Unlocking…").setMessage("Decrypting backup…").setCancelable(false).show()
+                lifecycleScope.launch {
+                    val plain = withContext(Dispatchers.Default) {
+                        com.hiktv.viewer.util.BackupCrypto.decrypt(encrypted, pin)
+                    }
+                    progress.dismiss()
+                    if (plain == null) toast("Wrong PIN") else confirmRestore(plain)
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -352,13 +373,22 @@ class SettingsActivity : AppCompatActivity() {
             .setTitle("Restore settings?")
             .setMessage("This replaces current settings with the saved backup and reconnects.")
             .setPositiveButton("Restore") { _, _ ->
-                runCatching { store.importJson(json) }
-                store.load()?.let { Session.connect(it) }
-                Session.cameras = store.loadCameras()
-                Session.gridDirty = true
-                startActivity(Intent(this, SetupActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-                finish()
+                val progress = MaterialAlertDialogBuilder(this)
+                    .setTitle("Restoring…").setMessage("Applying settings…").setCancelable(false).show()
+                lifecycleScope.launch {
+                    // EncryptedSharedPreferences rewrite (crypto + disk) off the main thread.
+                    val nvr = withContext(Dispatchers.IO) {
+                        runCatching { store.importJson(json) }
+                        store.load()
+                    }
+                    nvr?.let { Session.connect(it) }
+                    Session.cameras = withContext(Dispatchers.IO) { store.loadCameras() }
+                    Session.gridDirty = true
+                    progress.dismiss()
+                    startActivity(Intent(this@SettingsActivity, SetupActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+                    finish()
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
