@@ -12,7 +12,7 @@ Built to stay smooth on cheap TV sticks, driven entirely by a normal remote. �
 ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
 ![LibVLC](https://img.shields.io/badge/video-LibVLC-FF8800)
 
-**[⬇️ Download](../../releases/latest)** · [Setup](#-first-time-setup) · [Remote](#-using-the-remote) · [Fix problems](#-troubleshooting) · [For developers](#-how-it-works)
+**[⬇️ Download](../../releases/latest)** · [Setup](#-first-time-setup) · [Remote](#-using-the-remote) · [Fix problems](#-troubleshooting) · [Dev docs](docs/DEVELOPERS.md)
 
 </div>
 
@@ -167,123 +167,32 @@ H.265 on cheap chips is the hard part — and **different chips need opposite se
 
 ---
 
-## 🛠️ Build from source
+## 🧠 For developers
 
-Requires **Android Studio 2024.1+**, **JDK 17**, and the Android SDK.
-
-```bash
-./gradlew assembleDebug      # → app/build/outputs/apk/debug/app-debug.apk
-./gradlew installDebug       # install to a connected TV via adb
-```
-
-To build the **signed release** APKs, create `keystore.properties` in the project root:
-
-```properties
-storeFile=release.keystore
-storePassword=YOUR_PASSWORD
-keyAlias=YOUR_ALIAS
-keyPassword=YOUR_PASSWORD
-```
-
-```bash
-./gradlew clean assembleRelease   # → app/build/outputs/apk/release/*.apk  (per-ABI + universal)
-```
-
-> The signing key (`release.keystore`, `keystore.properties`) is **not** committed — keep yours private and backed up (you need the same key to ship updates). There's also a driver skill at `.claude/skills/run-hik-tv-viewer/` (a PowerShell ADB harness) that builds, installs, launches and screenshots the app.
-
-**To release:** bump `versionCode` + `versionName` in `app/build.gradle.kts` (and the badge above) → `./gradlew clean assembleRelease` → `gh release create vX.Y.Z app/build/outputs/apk/release/*.apk`.
-
----
-
-## 🧠 How it works
-
-- **Kotlin**, one Hikvision NVR; every camera is an NVR channel (RTSP id = `channel*100 + stream`, 101 = ch1 main, 102 = ch1 sub).
-- **[LibVLC](https://www.videolan.org/vlc/libvlc.html)** plays the RTSP streams (H.264 **and** H.265, hardware decode, low-latency). ExoPlayer's RTSP doesn't reliably do H.265 — that's why LibVLC is used.
-- **ISAPI** (HTTP Digest) for discovery, snapshots, recordings, Hikvision PTZ and stream config; **ONVIF** (SOAP) for direct-to-camera PTZ; **EZVIZ cloud** for EZVIZ PTZ.
-- The **grid** uses each camera's small **sub-stream**; **fullscreen** uses the high-res main stream. Streams are released when you leave a screen, so a weak TV never decodes more than it must.
+- **Kotlin**, one Hikvision NVR; every camera is an NVR channel. **[LibVLC](https://www.videolan.org/vlc/libvlc.html)** plays the RTSP streams (H.264 + H.265). ISAPI for control, ONVIF / EZVIZ cloud for PTZ.
+- The **grid** uses each camera's sub-stream; **fullscreen** uses the main stream; streams are released when you leave a screen so a weak TV never over-decodes.
 
 ```text
 Remote ─▶ Activity (grid / fullscreen / control / playback / settings)
                 │
-                ├─ Session ............ in-memory NVR + camera list
-                ├─ NvrStore ........... encrypted settings + backup JSON
-                ├─ IsapiClient ........ NVR REST (discover / PTZ / snapshot / search / optimize)
-                ├─ OnvifPtz / EzvizCloud / PtzController .... PTZ backends
+                ├─ Session ......... in-memory NVR + camera list
+                ├─ NvrStore ....... encrypted settings + backup JSON
+                ├─ IsapiClient .... NVR REST (discover / PTZ / snapshot / optimize)
                 └─ CameraStream ─▶ PlayerEngine (one shared LibVLC) ─▶ Surface/TextureView
 ```
 
-<details>
-<summary>📁 <b>Project structure</b></summary>
+📖 **Everything else — project layout, the per-chip video rules, the LibVLC pipeline (watchdog, reconnect, off-thread teardown), decoder-instance probing, crash capture, the EZVIZ/ONVIF/ISAPI specifics, "Optimize" internals, backup crypto and security — is in [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md).** Read it first if you're extending the app (with or without an AI agent); it captures things that took real debugging to learn.
 
-```text
-app/src/main/java/com/hiktv/viewer/
-├─ core/Session.kt              active NVR + camera list (in memory)
-├─ data/
-│  ├─ model/{Nvr,Camera}.kt     connection + camera info
-│  ├─ store/NvrStore.kt         encrypted settings + backup/restore JSON
-│  ├─ RtspUrls.kt               builds live / playback stream links
-│  ├─ isapi/IsapiClient.kt      NVR API: discover, PTZ, snapshot, recordings, optimize, serial
-│  ├─ isapi/EventListener.kt    alert-stream → motion/area events flow
-│  ├─ onvif/OnvifPtz.kt         direct-to-camera PTZ over ONVIF (SOAP + WS-UsernameToken)
-│  ├─ ezviz/EzvizCloud.kt       EZVIZ cloud login + PTZ + device list
-│  └─ ptz/PtzController.kt      one PTZ interface (NVR / direct ISAPI / ONVIF / EZVIZ cloud)
-├─ player/
-│  ├─ PlayerEngine.kt           single shared LibVLC, low-latency global options
-│  └─ CameraStream.kt           one RTSP stream ↔ one surface, reconnect, zoom/pan, per-chip options
-├─ util/
-│  ├─ DeviceQuirks.kt           per-chip workarounds (Amlogic render path)
-│  ├─ DecoderCaps.kt            probes concurrent HW decoder-instance limits
-│  ├─ CrashLog.kt               file-based crash capture (Settings → Last crash)
-│  ├─ BackupManager.kt          read/write the backup file in Downloads
-│  ├─ BackupCrypto.kt           optional PIN (AES-GCM, PBKDF2) backup encryption
-│  ├─ DialogIme.kt              TV keyboard BACK handling for dialogs
-│  ├─ SnapshotCache.kt          disk JPEG cache for instant grid previews
-│  └─ Notifications.kt          motion/area notification channel
-└─ ui/
-   ├─ setup/ · grid/ · fullscreen/ · camera/ · control/ · playback/ · settings/
+### Build
+
+Android Studio 2024.1+, JDK 17.
+
+```bash
+./gradlew assembleDebug      # → app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleRelease    # signed per-ABI + universal (needs keystore.properties)
 ```
-</details>
 
-<details>
-<summary>🧩 <b>Developer & AI hand-off notes</b> — hard-won, read before extending</summary>
-
-<br>
-
-> Non-obvious facts that took real debugging to learn. If you fork this and continue (with or without an AI agent), read this first.
-
-**Architecture rules**
-
-- One NVR only. All cameras (Hikvision + EZVIZ) are reached as NVR **channels**.
-- All settings live in **one** `EncryptedSharedPreferences` via `NvrStore`. The backup is just `prefs.all` serialized to JSON, so it's automatically complete — don't add a second prefs store.
-- Streams are released on `onStop` and rebuilt on `onStart` for every video screen; this is what keeps weak TVs from running out of decoder/surface sessions. Keep that pattern.
-- Blocking LibVLC `stop()/release()` runs on a shared background thread (`CameraStream.TEARDOWN`) so tearing down N grid tiles at once from `onStop` can't ANR the UI.
-
-**Per-chip video** (`util/DeviceQuirks.isAmlogic`, reads `Build.HARDWARE` / `ro.board.platform`)
-
-| | MediaTek (MiTV) | Amlogic (Mi Box) |
-| --- | --- | --- |
-| Hardware H.265, zero-copy | green | green/corner + Mali SIGSEGV |
-| Hardware H.265, copy (`:no-mediacodec-dr`) | **clean** | green/corner |
-| Hardware, `:vout=android_display` overlay (single surface) | n/a | **clean + realtime** |
-| Multi-tile grid hardware | ok (copy) | **green** (overlay can't clip N tiles → software) |
-
-So: Amlogic → `directRender` + per-stream `:vout=android_display` on single-surface screens, SurfaceView (not TextureView), **software grid and software synced-playback** (the multi-tile overlay can't clip N cells). MiTV → copy path. Concurrent hardware decoders are capped by a real probe (`util/DecoderCaps`, `getMaxSupportedInstances`) before synced playback spins up N main streams — cheap SoCs allow only ~2-4 HEVC sessions.
-
-**EZVIZ cloud PTZ** (`data/ezviz/EzvizCloud.kt`, ported from [pyEzviz](https://github.com/BaQs/pyEzviz))
-
-- Login: `POST https://{apiDomain}/v3/users/login/v5`, form `account / password(md5 hex) / featureCode / msgType=0 / cuName=SGFzc2lv`; on code `1100` follow `loginArea.apiDomain` and retry; `6002` = 2FA.
-- PTZ: `PUT https://{apiDomain}/v3/devices/{serial}/ptzControl` (capital **C**), form `command=UP|DOWN|LEFT|RIGHT, action=START|STOP, channelNo=1, speed=1..10`, header `sessionId`.
-- The EZVIZ serial = the **last 9 chars of the NVR's `<serialNumber>`** for that channel (auto-filled). The 6-letter "verification code" is NOT the account password.
-- Sessions expire after hours idle; the controller re-authenticates and retries once on any PTZ failure so PTZ doesn't silently die.
-
-**ONVIF** (`data/onvif/OnvifPtz.kt`): SOAP 1.2 + WS-UsernameToken digest, syncs to the camera clock first, puts the WS-Action in the Content-Type. Consumer EZVIZ usually expose **no** ONVIF port, so EZVIZ falls back to the cloud path.
-
-**ISAPI endpoints** (`data/isapi/IsapiClient.kt`): `ContentMgmt/InputProxy/channels` (names + ip + serial), `Streaming/channels[/{id}]` (online + per-stream config + the "Optimize" PUT — H.264, SmartCodec off, CBR/GOP, then re-GET to verify), `PTZCtrl/channels/{ch}/...`, `Streaming/channels/{id}/picture` (snapshot), `ContentMgmt/search` (recordings), `Event/notification/alertStream` (events), `System/deviceInfo` (connectivity). Short calls use a bounded-timeout client; the alertStream uses a 35 s-read client.
-
-**Backup file**: `Downloads/HikTVViewer_backup.json`. Plain = the settings JSON; encrypted = `{"hiktv_enc":1,"salt","iv","iter","data"}` (AES-GCM, PBKDF2-SHA256; `iter` stored so cost can rise without breaking old files).
-
-**Gotchas**: TV dialogs need `DialogIme` so BACK closes the keyboard not the popup · the Mi remote's "menu/m" key isn't reliably delivered, so use D-pad/OK and long-press · `adb logcat -b crash -d` reads a native crash after the fact; Java/Kotlin crashes are also saved to a file and shown in **Settings → Last crash** (a JVM handler can't catch native SIGSEGVs).
-</details>
+Full build, signing and release steps are in [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md#build-from-source).
 
 ---
 
