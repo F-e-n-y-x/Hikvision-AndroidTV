@@ -12,7 +12,7 @@ Built to stay smooth on cheap TV sticks, driven entirely by a normal remote. �
 ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
 ![LibVLC](https://img.shields.io/badge/video-LibVLC-FF8800)
 
-**[⬇️ Download](../../releases/latest)** · [Setup](#-first-time-setup) · [Remote](#-using-the-remote) · [Fix problems](#-troubleshooting) · [Dev docs](docs/DEVELOPERS.md)
+**[⬇️ Download](../../releases/latest)** · [Setup](#-first-time-setup) · [Remote](#-using-the-remote) · [Fix problems](#-troubleshooting)
 
 </div>
 
@@ -171,7 +171,7 @@ Android Studio 2024.1+, JDK 17.
 ./gradlew assembleRelease    # signed per-ABI + universal (needs keystore.properties)
 ```
 
-📖 **Architecture, per-chip video internals, EZVIZ/ONVIF/ISAPI details and release steps live in [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md)** — start there if you're continuing this project (with or without an AI agent); it captures things that took real debugging to learn. Recent fixes are documented in [`AUDIT_REPORT.md`](AUDIT_REPORT.md).
+The code lives under `app/src/main/java/com/hiktv/viewer/` — **`player/`** (shared LibVLC engine + per-stream tuning), **`data/`** (ISAPI · ONVIF · EZVIZ cloud), **`util/`** (per-chip quirks, backup, crash log) and **`ui/`** (one package per screen).
 
 ---
 
