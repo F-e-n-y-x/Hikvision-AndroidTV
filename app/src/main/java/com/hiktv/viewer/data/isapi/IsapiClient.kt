@@ -251,19 +251,47 @@ class IsapiClient(private val nvr: Nvr) {
     // ---- Stream optimization (smooth, low-CPU live wall) -------------------
 
     /**
-     * Reconfigure a channel's **sub-stream** to H.264 at a modest frame rate so the grid wall
-     * decodes cheaply and smoothly on weak TV CPUs. H.265 sub-streams are the reason the wall
-     * judders (software) or overruns the HEVC hardware decoder (hardware). Main/fullscreen
-     * stream is left untouched (stays full-quality H.265). Returns true if the NVR accepted it.
+     * Reconfigure a channel's **sub-stream** (the grid wall's source) for cheap, artifact-free
+     * decoding on weak TV CPUs:
+     *   - H.264 @ 15 fps — LibVLC and weak chips handle it far better than H.265 sub-streams;
+     *   - **SmartCodec (H.264+/H.265+) OFF** — the smart codec is the top cause of third-party
+     *     freezes/artifacts on this NVR family; LibVLC wants a plain profile;
+     *   - **CBR** + a short **GOP (~2x fps)** so a lost keyframe recovers in ~2s instead of a
+     *     multi-second freeze.
+     * Only fields the firmware already exposes are changed (never inserts unknown tags); the
+     * main / full-screen stream is untouched. The change is then re-read and verified, because
+     * Hikvision firmware can return 200 OK while silently ignoring fields.
      */
     suspend fun optimizeSubStream(channel: Int): Boolean = withContext(Dispatchers.IO) {
         val id = channel * 100 + 2
         val xml = getOrNull("/ISAPI/Streaming/channels/$id") ?: return@withContext false
+
         val out = xml
-            .replace(Regex("<videoCodecType>.*?</videoCodecType>"), "<videoCodecType>H.264</videoCodecType>")
-            .replace(Regex("<maxFrameRate>.*?</maxFrameRate>"), "<maxFrameRate>1500</maxFrameRate>")
-        runCatching { put("/ISAPI/Streaming/channels/$id", out); true }.getOrDefault(false)
+            .let { setTag(it, "videoCodecType", "H.264") }
+            .let { setTag(it, "maxFrameRate", "1500") }             // 15 fps (centi-fps)
+            .let { setTag(it, "videoQualityControlType", "CBR") }   // steady bitrate: fewer stalls
+            .let { setTag(it, "GovLength", "30") }                  // GOP ~2x fps: fast recovery
+            .let { disableSmartCodec(it) }                          // H.264+/H.265+ off
+
+        val accepted = runCatching { put("/ISAPI/Streaming/channels/$id", out); true }.getOrDefault(false)
+        if (!accepted) return@withContext false
+
+        // Verify the codec swap + smart-codec-off actually took (firmware may silently ignore a field).
+        val after = getOrNull("/ISAPI/Streaming/channels/$id") ?: return@withContext true
+        val codecOk = Regex("<videoCodecType>\\s*H\\.264", RegexOption.IGNORE_CASE).containsMatchIn(after)
+        val smartOff = !Regex("<SmartCodec>.*?<enabled>\\s*true",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).containsMatchIn(after)
+        codecOk && smartOff
     }
+
+    /** Replace the body of <tag>…</tag> with [value] — only when the tag exists (never inserts). */
+    private fun setTag(xml: String, tag: String, value: String): String =
+        Regex("<$tag>.*?</$tag>", RegexOption.DOT_MATCHES_ALL).replace(xml, "<$tag>$value</$tag>")
+
+    /** Turn Hikvision SmartCodec (H.264+/H.265+) off, if the element is present in the config. */
+    private fun disableSmartCodec(xml: String): String =
+        Regex("(<SmartCodec>.*?<enabled>).*?(</enabled>)", RegexOption.DOT_MATCHES_ALL)
+            .replace(xml) { "${it.groupValues[1]}false${it.groupValues[2]}" }
 
     // ---- Snapshot ----------------------------------------------------------
 

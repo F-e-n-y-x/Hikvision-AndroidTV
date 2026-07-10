@@ -193,8 +193,11 @@ auto-detects the chip and picks the right path — it should just work.
 | **Amlogic** (Mi Box, S905) | Single‑surface screens (full screen, playback, zoom/PTZ) use the **hardware overlay** (`vout=android_display`) → clean, realtime, no Mali crash. The **grid stays software** — Amlogic greens *any* hardware video on the multi‑tile path. |
 
 **Make the live wall lighter:** if several H.265 cameras strain a weak TV, run
-**Settings → "Optimize live (smooth)"** — it sets each camera's grid sub‑stream to **H.264 @ 15 fps**
-on the NVR (full‑screen / recording quality is unchanged). If video still misbehaves, try
+**Settings → "Optimize live (smooth)"** — it reconfigures each camera's grid sub‑stream on the NVR to
+plain **H.264 @ 15 fps** with the **smart codec (H.264+/H.265+) turned off** and a **steady bitrate
+(CBR) + short GOP**, then verifies the change stuck. The smart codec is the single biggest cause of
+freezes/artifacts with third‑party players, so turning it off is the highest‑value fix (full‑screen /
+recording quality is unchanged). If video still misbehaves, try
 **Settings → Video decoding → Software** or **Settings → Video rendering → Direct/Compatible**.
 
 ---
@@ -209,7 +212,7 @@ on the NVR (full‑screen / recording quality is unchanged). If video still misb
 | Grid layout | Auto / 1 / 2 / 3 / 4 columns. |
 | Video decoding | Balanced (default) · Hardware · Software. |
 | Video rendering | Compatible ↔ Direct (per‑TV render path override). |
-| Optimize live (smooth) | Convert grid sub‑streams to lightweight H.264. |
+| Optimize live (smooth) | Convert grid sub‑streams to lightweight H.264, smart codec off, CBR. |
 | Alerts | Pick cameras to get motion/area notifications for. |
 | Diagnostics | Show what the NVR returns (for connection issues). |
 | Last crash | Show the most recent app crash captured on this TV (for bug reports). |

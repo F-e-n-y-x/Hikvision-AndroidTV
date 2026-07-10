@@ -212,9 +212,9 @@ class SettingsActivity : AppCompatActivity() {
         if (cams.isEmpty()) return
         MaterialAlertDialogBuilder(this)
             .setTitle("Optimize live wall?")
-            .setMessage("Sets each camera's sub-stream (used in the grid) to H.264 @ 15 fps so the " +
-                "wall stays smooth and won't overload the TV's decoder. Fullscreen / main-stream " +
-                "quality is unchanged.")
+            .setMessage("Sets each camera's grid sub-stream to plain H.264 @ 15 fps — smart codec " +
+                "(H.264+/H.265+) off, steady bitrate — so the wall stays smooth and artifact-free " +
+                "and won't overload the TV's decoder. Fullscreen / main-stream quality is unchanged.")
             .setPositiveButton("Optimize") { _, _ ->
                 val dlg = MaterialAlertDialogBuilder(this)
                     .setTitle("Optimizing…").setMessage("Updating sub-streams…")
