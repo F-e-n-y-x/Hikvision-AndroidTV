@@ -212,6 +212,7 @@ on the NVR (full‑screen / recording quality is unchanged). If video still misb
 | Optimize live (smooth) | Convert grid sub‑streams to lightweight H.264. |
 | Alerts | Pick cameras to get motion/area notifications for. |
 | Diagnostics | Show what the NVR returns (for connection issues). |
+| Last crash | Show the most recent app crash captured on this TV (for bug reports). |
 | Backup / Restore settings | Save / load everything (optional PIN). |
 
 ---
@@ -374,7 +375,7 @@ reads an already-recorded native crash without re-running anything.
 | Live wall laggy / glitchy | Run **Settings → Optimize live (smooth)**; or **Video decoding → Software**. |
 | EZVIZ PTZ won't move | Camera → **Test PTZ connection**. Use the EZVIZ **account** login (not the verification code), check the serial, and turn off 2FA. |
 | Restore button missing on first boot | Grant the storage permission when prompted; or use **Settings → Restore settings** later. |
-| App crashes on a specific TV | Grab `adb logcat -b crash -d` from that TV — the native backtrace pinpoints the chip/driver issue. |
+| App crashes on a specific TV | Open **Settings → Last crash** first — it shows the most recent Java/Kotlin crash captured on the TV (no PC needed). For native video‑driver crashes (which a Java handler can't catch), grab `adb logcat -b crash -d` — the native backtrace pinpoints the chip/driver issue. |
 
 ---
 

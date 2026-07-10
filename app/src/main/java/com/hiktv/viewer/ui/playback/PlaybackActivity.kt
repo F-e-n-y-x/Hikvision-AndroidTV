@@ -64,6 +64,8 @@ class PlaybackActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityPlaybackBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Playback video: keep the screen awake while watching a recording.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val channel = intent.getIntExtra(EXTRA_CHANNEL, -1)
         val cam = Session.cameraByChannel(channel)

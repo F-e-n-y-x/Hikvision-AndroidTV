@@ -34,6 +34,16 @@ class IsapiClient(private val nvr: Nvr) {
 
     private val client: OkHttpClient = buildClient(nvr)
 
+    // Short request/response calls (discovery, PTZ, snapshot, config, diagnostics) get a bounded
+    // overall callTimeout so a rebooting/half-open NVR can't stall each call for the full 35s
+    // alert-stream read — otherwise a re-discovery after a Wi-Fi drop can freeze ~70-140s. The long
+    // read stays on [client], which the event listener reuses for the streaming alertStream.
+    private val shortClient: OkHttpClient = client.newBuilder()
+        .readTimeout(8, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
+        .callTimeout(15, TimeUnit.SECONDS)
+        .build()
+
     // ---- Discovery ---------------------------------------------------------
 
     /**
@@ -205,7 +215,7 @@ class IsapiClient(private val nvr: Nvr) {
             for (p in paths) {
                 val line = runCatching {
                     val req = Request.Builder().url("${nvr.httpBase}$p").get().build()
-                    client.newCall(req).execute().use { r ->
+                    shortClient.newCall(req).execute().use { r ->
                         val snippet = r.body?.string().orEmpty().replace("\\s+".toRegex(), " ").take(160)
                         "HTTP ${r.code}  ${if (snippet.isBlank()) "(empty)" else snippet}"
                     }
@@ -229,7 +239,14 @@ class IsapiClient(private val nvr: Nvr) {
             }.getOrDefault(false)
         }
 
-    suspend fun ptzStop(channel: Int) = ptzContinuous(channel, 0, 0, 0)
+    /**
+     * Stop continuous PTZ. Retried up to 3× because a dropped stop leaves the camera moving
+     * (runaway pan/tilt) — the same safety the ONVIF and EZVIZ controllers already apply on stop.
+     */
+    suspend fun ptzStop(channel: Int): Boolean = withContext(Dispatchers.IO) {
+        repeat(3) { if (ptzContinuous(channel, 0, 0, 0)) return@withContext true }
+        false
+    }
 
     // ---- Stream optimization (smooth, low-CPU live wall) -------------------
 
@@ -257,7 +274,7 @@ class IsapiClient(private val nvr: Nvr) {
             val req = Request.Builder()
                 .url("${nvr.httpBase}/ISAPI/Streaming/channels/$code/picture")
                 .get().build()
-            client.newCall(req).execute().use { r ->
+            shortClient.newCall(req).execute().use { r ->
                 if (r.isSuccessful) r.body?.bytes() else null
             }
         }.getOrNull()
@@ -340,7 +357,7 @@ class IsapiClient(private val nvr: Nvr) {
             val req = Request.Builder()
                 .url("${nvr.httpBase}/ISAPI/System/deviceInfo")
                 .get().build()
-            client.newCall(req).execute().use { r ->
+            shortClient.newCall(req).execute().use { r ->
                 when {
                     r.isSuccessful -> null
                     r.code == 401 -> "Wrong username or password"
@@ -354,7 +371,7 @@ class IsapiClient(private val nvr: Nvr) {
 
     private fun get(path: String): String {
         val req = Request.Builder().url("${nvr.httpBase}$path").get().build()
-        client.newCall(req).execute().use { r ->
+        shortClient.newCall(req).execute().use { r ->
             if (!r.isSuccessful) error("HTTP ${r.code} for $path")
             return r.body?.string().orEmpty()
         }
@@ -363,7 +380,7 @@ class IsapiClient(private val nvr: Nvr) {
     /** GET that returns the body on 2xx, or null on any failure/non-2xx (used for probing). */
     private fun getOrNull(path: String): String? = runCatching {
         val req = Request.Builder().url("${nvr.httpBase}$path").get().build()
-        client.newCall(req).execute().use { r ->
+        shortClient.newCall(req).execute().use { r ->
             if (r.isSuccessful) r.body?.string().orEmpty() else null
         }
     }.getOrNull()
@@ -373,7 +390,7 @@ class IsapiClient(private val nvr: Nvr) {
             .url("${nvr.httpBase}$path")
             .put(xml.toRequestBody("application/xml".toMediaType()))
             .build()
-        client.newCall(req).execute().use { r ->
+        shortClient.newCall(req).execute().use { r ->
             if (!r.isSuccessful) error("HTTP ${r.code} for $path")
         }
     }
@@ -383,7 +400,7 @@ class IsapiClient(private val nvr: Nvr) {
             .url("${nvr.httpBase}$path")
             .post(xml.toRequestBody("application/xml".toMediaType()))
             .build()
-        client.newCall(req).execute().use { r ->
+        shortClient.newCall(req).execute().use { r ->
             if (!r.isSuccessful) error("HTTP ${r.code} for $path")
             return r.body?.string().orEmpty()
         }

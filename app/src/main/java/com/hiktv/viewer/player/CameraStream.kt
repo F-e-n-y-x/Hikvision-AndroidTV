@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
@@ -57,6 +58,9 @@ class CameraStream(
     // forces a stop()/play() reconnect so the tile recovers in place. Read on the event thread and
     // written on both threads — volatile.
     @Volatile private var lastProgressAt = 0L
+    // When the stream last entered Playing. Backoff is only reset after it stays up a while, so a
+    // stream that flaps (Playing → error → Playing …) can't keep resetting to the 1s minimum.
+    @Volatile private var playingSince = 0L
     private val watchdog = object : Runnable {
         override fun run() {
             if (released || stopped) return
@@ -75,14 +79,22 @@ class CameraStream(
         player.setEventListener { event ->
             when (event.type) {
                 MediaPlayer.Event.Playing -> {
-                    retryDelay = 1000L
-                    lastProgressAt = SystemClock.elapsedRealtime()
+                    // Note: backoff (retryDelay) is deliberately NOT reset here — see TimeChanged.
+                    playingSince = SystemClock.elapsedRealtime()
+                    lastProgressAt = playingSince
                     main.post { onState(State.PLAYING) }
                 }
                 // Fires continuously while frames actually flow — our liveness signal. When it
                 // stops (a silent stall that raises no error), the watchdog reconnects.
-                MediaPlayer.Event.TimeChanged ->
-                    lastProgressAt = SystemClock.elapsedRealtime()
+                MediaPlayer.Event.TimeChanged -> {
+                    val now = SystemClock.elapsedRealtime()
+                    lastProgressAt = now
+                    // Reset backoff only after the stream has been stably playing for a while: a
+                    // genuinely recovered stream forgets its penalty, a flapping one keeps it.
+                    if (retryDelay > 1000L && playingSince > 0L && now - playingSince > STABLE_RESET_MS) {
+                        retryDelay = 1000L
+                    }
+                }
                 MediaPlayer.Event.EncounteredError -> {
                     main.post { onState(State.ERROR) }
                     scheduleReconnect()
@@ -187,14 +199,19 @@ class CameraStream(
      * the enlarged image to pan around it. GPU-cheap — no second decode.
      */
     fun setTransform(scale: Float, dxPx: Float, dyPx: Float) {
-        val tv = findTextureView(attachedLayout)
-        if (tv != null) {
-            tv.scaleX = scale
-            tv.scaleY = scale
-            tv.translationX = dxPx
-            tv.translationY = dyPx
+        // Apply zoom+pan as a view-level transform on whichever surface LibVLC created for this
+        // stream — a TextureView (default) OR a SurfaceView (Amlogic direct-display path). Both are
+        // Views, so scaleX/scaleY/translationX/translationY zoom and pan identically. This is what
+        // lets PAN work on the SurfaceView path: the old code only applied a centred player.scale
+        // there and dropped the pan offset entirely, so digital pan did nothing on Amlogic.
+        val vv = findVideoView(attachedLayout)
+        if (vv != null) {
+            vv.scaleX = scale
+            vv.scaleY = scale
+            vv.translationX = dxPx
+            vv.translationY = dyPx
         } else {
-            // SurfaceView (e.g. Amlogic): no view transform — fall back to LibVLC centred zoom.
+            // No surface attached yet (transform issued before start()): centred zoom fallback.
             runCatching { player.scale = if (scale <= 1f) 0f else scale }
         }
     }
@@ -202,9 +219,10 @@ class CameraStream(
     /** Centred digital zoom (no pan). */
     fun setZoom(factor: Float) = setTransform(if (factor <= 1f) 1f else factor, 0f, 0f)
 
-    private fun findTextureView(v: View?): TextureView? {
-        if (v is TextureView) return v
-        if (v is ViewGroup) for (i in 0 until v.childCount) findTextureView(v.getChildAt(i))?.let { return it }
+    /** The video surface LibVLC attached to the layout — a TextureView or a SurfaceView. */
+    private fun findVideoView(v: View?): View? {
+        if (v is TextureView || v is SurfaceView) return v
+        if (v is ViewGroup) for (i in 0 until v.childCount) findVideoView(v.getChildAt(i))?.let { return it }
         return null
     }
 
@@ -218,17 +236,34 @@ class CameraStream(
     }
 
     fun release() {
+        if (released) return
         released = true
         main.removeCallbacksAndMessages(null)
-        runCatching { player.stop() }
-        runCatching { player.detachViews() }
-        runCatching { player.setEventListener(null) }
-        runCatching { player.release() }
+        val p = player
+        runCatching { p.setEventListener(null) }   // stop events first (safe on any thread)
+        runCatching { p.detachViews() }            // View work: must stay on the caller's (main) thread
+        // Offload the blocking native teardown off the UI thread: stop() joins the decoder/demux
+        // threads (slow under load) and release() frees natives. Doing this for N tiles at once from
+        // GridActivity.onStop on the main thread is a concrete ANR path (audit B4). A single shared
+        // thread keeps the releases serialized (no native-engine thrash) but off the UI thread.
+        TEARDOWN.execute {
+            runCatching { p.stop() }
+            runCatching { p.release() }
+        }
     }
 
     private companion object {
         // Reconnect a live tile if no frame has advanced for this long while we believe it's playing.
         const val STALL_TIMEOUT_MS = 7000L
         const val WATCHDOG_INTERVAL_MS = 2500L
+        // How long a stream must stay in Playing before its reconnect backoff is reset to the min.
+        const val STABLE_RESET_MS = 10000L
+
+        // Shared single background thread for native MediaPlayer teardown (stop()/release()) so
+        // releasing N tiles at once never blocks the UI thread. Serialized to avoid native thrash.
+        private val TEARDOWN: java.util.concurrent.ExecutorService =
+            java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+                Thread(r, "cam-teardown").apply { isDaemon = true }
+            }
     }
 }

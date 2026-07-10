@@ -62,6 +62,8 @@ class FullscreenActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityFullscreenBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Live video: keep the screen awake while watching.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val channel = intent.getIntExtra(EXTRA_CHANNEL, -1)
         val cam = Session.cameraByChannel(channel)

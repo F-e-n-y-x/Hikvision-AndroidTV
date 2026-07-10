@@ -66,6 +66,8 @@ class ControlActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityControlBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Live video: keep the screen awake while watching / driving PTZ.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val channel = intent.getIntExtra(EXTRA_CHANNEL, -1)
         val cam = Session.cameraByChannel(channel)
@@ -298,14 +300,22 @@ class ControlActivity : AppCompatActivity() {
 
     // Free the decoder + surface when another screen covers us, and rebuild on return — holding a
     // live decoder while the surface is torn down is the surface-reinit crash class on weak SoCs.
+    // Hoisted so onStop can cancel it, and gated on STARTED: a fast onStart→onStop inside the
+    // 200ms window must not build a decoder while the surface is being torn down.
+    private val startStreamRunnable = Runnable {
+        if (stream == null && !isFinishing &&
+            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+            startStream(); applyTransform()
+        }
+    }
+
     override fun onStart() {
         super.onStart()
-        if (stream == null) binding.videoLayout.postDelayed({
-            if (stream == null && !isFinishing) { startStream(); applyTransform() }
-        }, 200)
+        if (stream == null) binding.videoLayout.postDelayed(startStreamRunnable, 200)
     }
 
     override fun onStop() {
+        binding.videoLayout.removeCallbacks(startStreamRunnable)
         if (ptzActive) stopPtz()
         stream?.release()
         stream = null
@@ -313,6 +323,7 @@ class ControlActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        binding.videoLayout.removeCallbacks(startStreamRunnable)
         if (ptzActive) stopPtz()
         stream?.release()
         stream = null

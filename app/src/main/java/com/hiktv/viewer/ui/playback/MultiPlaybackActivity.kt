@@ -68,15 +68,19 @@ class MultiPlaybackActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMultiplaybackBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Synced playback video: keep the screen awake while watching.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val online = Session.cameras.filter { it.online }
         if (online.isEmpty() || Session.nvr == null) { finish(); return }
         // Cap simultaneous full-res decoders: N main-stream H.264/H.265 players at once exhausts
-        // MediaCodec on weak TVs and can crash/reboot them. Show the first MAX_CELLS synced.
-        cams += online.take(MAX_CELLS)
-        if (online.size > MAX_CELLS) {
+        // MediaCodec on weak TVs and can crash/reboot them. The cap is device-aware (probed HW
+        // decoder-instance limit, or a modest bound on the software-decoded Amlogic path).
+        val cellCap = cellCapFor()
+        cams += online.take(cellCap)
+        if (online.size > cellCap) {
             android.widget.Toast.makeText(
-                this, "Showing first $MAX_CELLS of ${online.size} cameras", android.widget.Toast.LENGTH_LONG
+                this, "Showing first $cellCap of ${online.size} cameras", android.widget.Toast.LENGTH_LONG
             ).show()
         }
 
@@ -94,6 +98,18 @@ class MultiPlaybackActivity : AppCompatActivity() {
         updateTimeLabel()
         acceptKeysAt = SystemClock.elapsedRealtime() + 800
         loadSegments()
+    }
+
+    /** How many cameras we can safely decode at once on this device (never more than MAX_CELLS). */
+    private fun cellCapFor(): Int {
+        val cap = if (com.hiktv.viewer.util.DeviceQuirks.isAmlogic) {
+            4   // software-decoded on Amlogic (see playAllFrom): bound by CPU, keep it modest
+        } else {
+            // Hardware: never request more concurrent HW decoders than the SoC actually supports.
+            minOf(com.hiktv.viewer.util.DecoderCaps.maxHevcInstances,
+                  com.hiktv.viewer.util.DecoderCaps.maxAvcInstances)
+        }
+        return minOf(MAX_CELLS, cap.coerceAtLeast(1))
     }
 
     private fun buildGrid() {
@@ -200,8 +216,12 @@ class MultiPlaybackActivity : AppCompatActivity() {
         val nvr = Session.nvr ?: return
         releasePlayers()
         val store = NvrStore(this)
-        val hw = store.decoderMode != 2
-        val directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic
+        val amlogic = com.hiktv.viewer.util.DeviceQuirks.isAmlogic
+        // Amlogic greens hardware H.265 on the multi-tile GL path (same rule as the grid; the
+        // single-surface :vout overlay can't clip N cells either), so force SOFTWARE here regardless
+        // of decoder mode. Elsewhere honour the user's Software setting.
+        val hw = store.decoderMode != 2 && !amlogic
+        val directRender = store.directRender || amlogic
         playFrom = fromPseudo
         anchorElapsed = SystemClock.elapsedRealtime()
         playing = true
@@ -281,22 +301,32 @@ class MultiPlaybackActivity : AppCompatActivity() {
         playing = false
     }
 
+    // Hoisted so onStop can cancel it: without the STARTED guard + cancel, a fast onStart→onStop
+    // inside the 250ms window would fire this while backgrounded and allocate up to MAX_CELLS
+    // decoders off-screen — the exact MediaCodec-exhaustion path this screen is capped to avoid.
+    private val resumeRunnable = Runnable {
+        if (players.all { it == null } && !isFinishing &&
+            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+            playAllFrom(playhead)
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         // Resume after returning from background (we released everything in onStop).
         if (hasPlayed && cells.isNotEmpty() && players.all { it == null } && !isFinishing) {
-            binding.grid.postDelayed({
-                if (players.all { it == null } && !isFinishing) playAllFrom(playhead)
-            }, 250)
+            binding.grid.postDelayed(resumeRunnable, 250)
         }
     }
 
     override fun onStop() {
+        binding.grid.removeCallbacks(resumeRunnable)
         releasePlayers()
         super.onStop()
     }
 
     override fun onDestroy() {
+        binding.grid.removeCallbacks(resumeRunnable)
         ui.removeCallbacksAndMessages(null)
         releasePlayers()
         super.onDestroy()

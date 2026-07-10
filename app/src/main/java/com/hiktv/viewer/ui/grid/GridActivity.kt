@@ -46,10 +46,19 @@ class GridActivity : AppCompatActivity() {
     private var backAt = 0L
     private var displayed: List<Camera> = emptyList()
 
+    // Bring the wall's streams back after we shed them under memory pressure (see onTrimMemory).
+    private val restoreStreams = Runnable {
+        if (::adapter.isInitialized && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            adapter.startAllStreams()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityGridBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Live camera wall: keep the TV screensaver from blanking it while it's on screen.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         store = NvrStore(this)
 
         if (!Session.isReady) { finishToSetup(); return }
@@ -78,8 +87,23 @@ class GridActivity : AppCompatActivity() {
     override fun onStop() {
         // Free all decoders/surfaces while another screen (fullscreen, settings) is on top —
         // this is what prevents the "too many surfaces" churn and crash on return.
+        binding.recycler.removeCallbacks(restoreStreams)
         if (::adapter.isInitialized) adapter.releaseAllStreams()
         super.onStop()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // The system is critically low on RAM while we're foreground and about to start killing
+        // apps. Shed the live decoders now (the biggest native consumer on a software-decoded wall,
+        // made worse by largeHeap) so we're a smaller LMK target; tiles fall back to their cached
+        // snapshots, and we restore the streams once the pressure spike passes.
+        if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL &&
+            ::adapter.isInitialized) {
+            adapter.releaseAllStreams()
+            binding.recycler.removeCallbacks(restoreStreams)
+            binding.recycler.postDelayed(restoreStreams, 4000)
+        }
     }
 
     override fun onResume() {
@@ -121,8 +145,9 @@ class GridActivity : AppCompatActivity() {
         binding.recycler.visibility = View.VISIBLE
         // Grid software-decodes by default. NOTE on Amlogic: hardware decode greens on the
         // multi-tile GL path (only the single-surface overlay is clean, and that can't show 4
-        // tiles), so the grid MUST stay software there. Only explicit "Hardware" mode (1) opts in.
-        adapter.hardware = store.decoderMode == 1
+        // tiles), so the grid MUST stay software there — even if the user picks "Hardware" mode.
+        // Only explicit "Hardware" mode (1), and never on Amlogic, opts the grid into hardware.
+        adapter.hardware = store.decoderMode == 1 && !com.hiktv.viewer.util.DeviceQuirks.isAmlogic
         columns = columnsFor(cams.size)
         (binding.recycler.layoutManager as GridLayoutManager).spanCount = columns
         adapter.submit(cams)

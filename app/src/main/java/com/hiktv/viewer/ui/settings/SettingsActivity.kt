@@ -50,6 +50,7 @@ class SettingsActivity : AppCompatActivity() {
             Row("Optimize live (smooth)", "Set sub-streams to H.264 for a lighter, smoother wall") { optimizeStreams() },
             Row("Alerts", alertsLabel()) { chooseAlerts() },
             Row("Diagnostics", "Check what the NVR returns") { diagnostics() },
+            Row("Last crash", crashLabel()) { showLastCrash() },
             Row("Playback", "View recorded footage") { playback() },
             Row("Backup settings", "Save everything to Downloads") { backup() },
             Row("Restore settings", "Re-import a saved backup") { restore() },
@@ -241,6 +242,26 @@ class SettingsActivity : AppCompatActivity() {
             .setTitle("Diagnostics").setMessage("Querying NVR…")
             .setPositiveButton("Close", null).show()
         lifecycleScope.launch { dlg.setMessage(isapi.diagnose()) }
+    }
+
+    private fun crashLabel(): String =
+        if (com.hiktv.viewer.util.CrashLog.last(this) != null) "Tap to view the last recorded crash"
+        else "None recorded"
+
+    private fun showLastCrash() {
+        val text = com.hiktv.viewer.util.CrashLog.last(this)
+        if (text == null) {
+            MaterialAlertDialogBuilder(this).setTitle("Last crash")
+                .setMessage("No crash has been recorded on this TV.\n\nNote: native video-driver " +
+                    "crashes aren't captured here — for those use `adb logcat -b crash -d`.")
+                .setPositiveButton("OK", null).show()
+            return
+        }
+        MaterialAlertDialogBuilder(this).setTitle("Last crash")
+            .setMessage(text)
+            .setPositiveButton("Close", null)
+            .setNegativeButton("Clear") { _, _ -> com.hiktv.viewer.util.CrashLog.clear(this) }
+            .show()
     }
 
     private fun playback() {

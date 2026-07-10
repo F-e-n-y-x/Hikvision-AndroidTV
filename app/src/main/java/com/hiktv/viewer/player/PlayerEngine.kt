@@ -17,10 +17,10 @@ object PlayerEngine {
 
     fun get(context: Context): LibVLC =
         libVlc ?: synchronized(this) {
-            libVlc ?: LibVLC(context.applicationContext, buildOptions()).also { libVlc = it }
+            libVlc ?: LibVLC(context.applicationContext, buildOptions(context)).also { libVlc = it }
         }
 
-    private fun buildOptions(): ArrayList<String> = arrayListOf(
+    private fun buildOptions(context: Context): ArrayList<String> = arrayListOf(
         // Transport: TCP is artifact-free over LAN; pulls reliable frames from the NVR.
         "--rtsp-tcp",
         // Hardware decode wherever the SoC offers it (H.264 + H.265). This is the single
@@ -40,9 +40,14 @@ object PlayerEngine {
         "--no-osd",
         "--no-stats",
         "--no-spu",            // no subtitle rendering
-        // Quiet logs in production; flip to "-vv" while debugging streams.
-        "-v"
+        // Silent in production: per-stream "-v" info logging wastes CPU on an N-tile wall AND
+        // prints the full RTSP URI (with embedded user:pass) to logcat. Verbose only in a
+        // debuggable build, where "-vv" is useful for diagnosing streams.
+        if (isDebuggable(context)) "-vv" else "--quiet"
     )
+
+    private fun isDebuggable(context: Context): Boolean =
+        (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     /** Call on full app shutdown if desired. Normally we keep the engine alive. */
     fun release() {
