@@ -284,6 +284,16 @@ class IsapiClient(private val nvr: Nvr) {
         codecOk && smartOff
     }
 
+    /** Raw sub-stream StreamingChannel XML (for capturing the original before Optimize). */
+    suspend fun readSubStreamXml(channel: Int): String? = withContext(Dispatchers.IO) {
+        getOrNull("/ISAPI/Streaming/channels/${channel * 100 + 2}")
+    }
+
+    /** PUT a previously-captured sub-stream XML back verbatim (the Optimize revert). */
+    suspend fun writeSubStreamXml(channel: Int, xml: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching { put("/ISAPI/Streaming/channels/${channel * 100 + 2}", xml); true }.getOrDefault(false)
+    }
+
     /** Replace the body of <tag>…</tag> with [value] — only when the tag exists (never inserts). */
     private fun setTag(xml: String, tag: String, value: String): String =
         Regex("<$tag>.*?</$tag>", RegexOption.DOT_MATCHES_ALL).replace(xml, "<$tag>$value</$tag>")

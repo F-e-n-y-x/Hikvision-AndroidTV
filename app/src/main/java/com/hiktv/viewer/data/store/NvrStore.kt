@@ -171,6 +171,27 @@ class NvrStore(context: Context) {
     fun setEzvizSerial(channel: Int, serial: String?) =
         prefs.edit().putString("ezviz_serial_$channel", serial).apply()
 
+    // ---- Sub-stream originals (for "Restore sub-streams" after Optimize) ----
+
+    /** Save the raw sub-stream config XML captured before Optimize (channel -> XML). */
+    fun saveSubStreamOriginals(map: Map<Int, String>) {
+        val obj = org.json.JSONObject()
+        for ((ch, xml) in map) obj.put(ch.toString(), xml)
+        prefs.edit().putString(K_SUBSTREAM_BACKUP, obj.toString()).apply()
+    }
+
+    fun loadSubStreamOriginals(): Map<Int, String> {
+        val s = prefs.getString(K_SUBSTREAM_BACKUP, null) ?: return emptyMap()
+        return runCatching {
+            val obj = org.json.JSONObject(s)
+            obj.keys().asSequence().mapNotNull { k -> k.toIntOrNull()?.let { it to obj.getString(k) } }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    fun hasSubStreamBackup(): Boolean = prefs.contains(K_SUBSTREAM_BACKUP)
+
+    fun clearSubStreamBackup() = prefs.edit().remove(K_SUBSTREAM_BACKUP).apply()
+
     // ---- Backup / restore (all settings as JSON) ---------------------------
 
     /** Serialize every stored setting (NVR, cameras, layout, alerts, direct/EZVIZ PTZ) to JSON. */
@@ -217,5 +238,6 @@ class NvrStore(context: Context) {
         private const val K_DECODER = "decoder_mode"
         private const val K_DIRECT_RENDER = "direct_render"
         private const val K_ALERTS = "alert_channels"
+        private const val K_SUBSTREAM_BACKUP = "substream_backup"
     }
 }

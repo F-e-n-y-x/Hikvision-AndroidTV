@@ -213,6 +213,7 @@ recording quality is unchanged). If video still misbehaves, try
 | Video decoding | Balanced (default) · Hardware · Software. |
 | Video rendering | Compatible ↔ Direct (per‑TV render path override). |
 | Optimize live (smooth) | Convert grid sub‑streams to lightweight H.264, smart codec off, CBR. |
+| Restore sub-streams | Undo Optimize — revert grid sub‑streams to their pre‑Optimize config (shown only after you've optimized). |
 | Alerts | Pick cameras to get motion/area notifications for. |
 | Diagnostics | Show what the NVR returns (for connection issues). |
 | Last crash | Show the most recent app crash captured on this TV (for bug reports). |

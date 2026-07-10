@@ -41,7 +41,7 @@ class SettingsActivity : AppCompatActivity() {
         val nvr = Session.nvr
         binding.settingsSub.text = nvr?.let { "${it.host}  •  ${Session.cameras.size} cameras" } ?: ""
 
-        val rows = listOf(
+        val rows = listOfNotNull(
             Row("Connection", nvr?.host ?: "Set up the NVR connection") { openConnection() },
             Row("Refresh cameras", "Re-scan the NVR (uses camera names)") { refresh() },
             Row("Scan channels", "Force per-channel detection") { scan() },
@@ -50,6 +50,9 @@ class SettingsActivity : AppCompatActivity() {
             Row("Video decoding", decoderLabel()) { chooseDecoder() },
             Row("Video rendering", renderLabel()) { chooseRender() },
             Row("Optimize live (smooth)", "Set sub-streams to H.264 for a lighter, smoother wall") { optimizeStreams() },
+            if (store.hasSubStreamBackup())
+                Row("Restore sub-streams", "Undo Optimize — put grid sub-streams back") { restoreSubStreams() }
+            else null,
             Row("Alerts", alertsLabel()) { chooseAlerts() },
             Row("Diagnostics", "Check what the NVR returns") { diagnostics() },
             Row("Last crash", crashLabel()) { showLastCrash() },
@@ -222,6 +225,14 @@ class SettingsActivity : AppCompatActivity() {
                     .setTitle("Optimizing…").setMessage("Updating sub-streams…")
                     .setCancelable(false).show()
                 lifecycleScope.launch {
+                    // Capture the current sub-stream config first so "Restore sub-streams" can revert
+                    // (keep the earliest original per channel across repeated Optimize runs).
+                    val originals = store.loadSubStreamOriginals().toMutableMap()
+                    for (c in cams) if (!originals.containsKey(c.channel)) {
+                        isapi.readSubStreamXml(c.channel)?.let { originals[c.channel] = it }
+                    }
+                    if (originals.isNotEmpty()) store.saveSubStreamOriginals(originals)
+
                     var ok = 0
                     for (c in cams) if (isapi.optimizeSubStream(c.channel)) ok++
                     dlg.dismiss()
@@ -229,7 +240,37 @@ class SettingsActivity : AppCompatActivity() {
                     MaterialAlertDialogBuilder(this@SettingsActivity)
                         .setTitle("Done")
                         .setMessage("Updated $ok of ${cams.size} cameras. The wall now uses the " +
-                            "lighter H.264 sub-stream — reopen the grid to see it.")
+                            "lighter H.264 sub-stream — reopen the grid to see it. You can undo this " +
+                            "later with “Restore sub-streams”.")
+                        .setPositiveButton("OK") { _, _ -> finish() }
+                        .show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Undo Optimize: PUT each saved original grid sub-stream config back to the NVR. */
+    private fun restoreSubStreams() {
+        val isapi = Session.isapi ?: return
+        val originals = store.loadSubStreamOriginals()
+        if (originals.isEmpty()) { toast("Nothing to restore"); return }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Restore sub-streams?")
+            .setMessage("Puts each camera's grid sub-stream back to exactly how it was before you " +
+                "ran Optimize (${originals.size} camera(s)).")
+            .setPositiveButton("Restore") { _, _ ->
+                val dlg = MaterialAlertDialogBuilder(this)
+                    .setTitle("Restoring…").setMessage("Reverting sub-streams…").setCancelable(false).show()
+                lifecycleScope.launch {
+                    var ok = 0
+                    for ((ch, xml) in originals) if (isapi.writeSubStreamXml(ch, xml)) ok++
+                    if (ok > 0) store.clearSubStreamBackup()
+                    dlg.dismiss()
+                    Session.gridDirty = true
+                    MaterialAlertDialogBuilder(this@SettingsActivity)
+                        .setTitle("Done")
+                        .setMessage("Restored $ok of ${originals.size} cameras. Reopen the grid to see it.")
                         .setPositiveButton("OK") { _, _ -> finish() }
                         .show()
                 }
