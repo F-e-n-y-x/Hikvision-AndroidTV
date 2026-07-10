@@ -8,7 +8,7 @@ It opens straight into a wall of every camera (Hikvision **and** EZVIZ, as long 
 one NVR), and is built to stay smooth on cheap, low-power TVs and TV sticks using only a normal
 remote (D‑pad + OK + Back + Volume).
 
-![version](https://img.shields.io/badge/version-2.3.5-2D7DF6)
+![version](https://img.shields.io/badge/version-2.3.6-2D7DF6)
 ![platform](https://img.shields.io/badge/platform-Android%20TV%206%2B-3DDC84)
 ![language](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
 ![player](https://img.shields.io/badge/video-LibVLC-FF8800)
