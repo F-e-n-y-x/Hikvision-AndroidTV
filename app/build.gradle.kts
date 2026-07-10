@@ -2,7 +2,6 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 // Release signing is read from keystore.properties (kept out of version control).
@@ -14,7 +13,7 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "com.hiktv.viewer"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.hiktv.viewer"
@@ -56,9 +55,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         viewBinding = true
     }
@@ -80,6 +76,13 @@ android {
             include("armeabi-v7a", "arm64-v8a", "x86")
             isUniversalApk = true
         }
+    }
+}
+
+// AGP 9 built-in Kotlin: configure the JVM target here (replaces android.kotlinOptions).
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
