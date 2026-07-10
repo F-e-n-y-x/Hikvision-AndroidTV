@@ -102,7 +102,7 @@ dependencies {
     implementation("io.github.rburgst:okhttp-digest:3.1.1")
 
     // Encrypted credential storage
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.security:security-crypto:1.1.0")
 
     // Video engine: hardware-accelerated, H.264/H.265, RTSP, low-latency tunable
     implementation("org.videolan.android:libvlc-all:3.6.4")
