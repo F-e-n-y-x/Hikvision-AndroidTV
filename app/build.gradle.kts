@@ -87,22 +87,23 @@ kotlin {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.12.0")
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("com.google.android.material:material:1.13.0")
+    implementation("androidx.recyclerview:recyclerview:1.4.0")
 
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.3")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
-    // ISAPI over HTTP Digest auth
+    // ISAPI over HTTP Digest auth. OkHttp is held at 4.12.0 (the last 4.x): okhttp-digest
+    // has no OkHttp 5 release, so 5.x cannot be adopted until upstream ships it.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("io.github.rburgst:okhttp-digest:3.1.0")
+    implementation("io.github.rburgst:okhttp-digest:3.1.1")
 
     // Encrypted credential storage
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Video engine: hardware-accelerated, H.264/H.265, RTSP, low-latency tunable
-    implementation("org.videolan.android:libvlc-all:3.6.0")
+    implementation("org.videolan.android:libvlc-all:3.6.4")
 }
