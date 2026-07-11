@@ -7,12 +7,12 @@
 Opens straight to a wall of all your cameras (Hikvision **and** EZVIZ on one NVR).
 Built to stay smooth on cheap TV sticks, driven entirely by a normal remote. 📱
 
-![version](https://img.shields.io/badge/version-2.3.6-2D7DF6)
+![version](https://img.shields.io/badge/version-2.4.0-2D7DF6)
 ![platform](https://img.shields.io/badge/Android%20TV-6%2B-3DDC84?logo=androidtv&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
-![LibVLC](https://img.shields.io/badge/video-LibVLC-FF8800)
+![LibVLC](https://img.shields.io/badge/video-LibVLC%203.7.5-FF8800)
 
-**[⬇️ Download](../../releases/latest)** · [Setup](#-first-time-setup) · [Remote](#-using-the-remote) · [Fix problems](#-troubleshooting) · [Dev docs](docs/DEVELOPERS.md)
+**[⬇️ Download](../../releases/latest)** · [Setup](#-first-time-setup) · [Remote](#-using-the-remote) · [Fix problems](#-troubleshooting) · [Changelog](CHANGELOG.md) · [Dev docs](docs/DEVELOPERS.md)
 
 </div>
 
@@ -74,15 +74,18 @@ A plain Android TV remote — **D-pad · OK · Back · Volume**. No special remo
 | Button | Action |
 | :-- | :-- |
 | **◀ ▶** / **OK** | Previous-next camera / popup menu (PTZ, zoom, playback, snapshot, PiP…) |
-| **▲** / **Hold ▼** | Zoom-Pan-PTZ screen / this camera's playback |
+| **▲** / **Hold ▼** | Zoom-Pan-PTZ overlay / this camera's playback |
 | **Back** | Return to the wall |
 
 **🔎 Zoom / Pan / PTZ** (open with **▲** from fullscreen)
+
+Opens **instantly, right on the live picture** — it reuses the stream already playing, so there's nothing to reconnect.
 
 | Button | Action |
 | :-- | :-- |
 | **OK** | Switch mode: Zoom → Pan → PTZ (PTZ only if the camera supports it) |
 | **▲▼ / Vol** | Zoom in-out · **D-pad** pans the image (Pan) or moves the camera (PTZ) |
+| **Back** | Close the overlay (back to plain fullscreen) |
 
 **⏪ Playback** — **◀ ▶** scrub · **▲ ▼** jump ±1h · **OK** play/pause · **Back** exit.
 
@@ -126,6 +129,10 @@ H.265 on cheap chips is the hard part — and **different chips need opposite se
 | :-- | :-- |
 | **MediaTek** (Xiaomi MiTV) | Hardware H.265 with the copy render path (its zero-copy path is all-green) |
 | **Amlogic** (Mi Box, S905) | Hardware overlay on single screens; **software grid** (Amlogic greens hardware video on the multi-tile path) |
+
+Decode threads are **capped per tile**, so a 4-camera wall doesn't spawn ~20 decode threads on a 4-core TV — that thrash used to leave the wall black for minutes before the first frame.
+
+> **Mi Box / Amlogic owners:** the old `libGLES_mali` crash (app dying on the wall, in fullscreen, or looping on launch) is **fixed in 2.4.0**. If you're on an older build, update.
 
 **Wall still heavy?** Run **⚙️ Settings → Optimize live** — it switches each grid sub-stream to plain **H.264 @ 15 fps, smart codec off, CBR** on the NVR. That smart codec is the #1 cause of freezes/artifacts, so this is the biggest single fix (fullscreen/recording quality is unchanged, and you can **undo it any time with "Restore sub-streams"**). Still off? Try **Video decoding → Software** or **Video rendering → Direct**.
 
@@ -185,7 +192,7 @@ Remote ─▶ Activity (grid / fullscreen / control / playback / settings)
 
 ### Build
 
-Android Studio 2024.1+, JDK 17.
+**JDK 17+.** Gradle 9.6.1 · Android Gradle Plugin 9.2.0 · Kotlin 2.x (AGP's built-in Kotlin — no separate Kotlin plugin) · compileSdk 37 · minSdk 23 · targetSdk 35.
 
 ```bash
 ./gradlew assembleDebug      # → app/build/outputs/apk/debug/app-debug.apk
