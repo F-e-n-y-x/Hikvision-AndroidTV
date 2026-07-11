@@ -10,12 +10,12 @@ import android.text.format.Formatter
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.EditText
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.hiktv.viewer.util.BackupCrypto
 import com.hiktv.viewer.util.DialogIme
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.hiktv.viewer.R
@@ -44,6 +44,11 @@ class SetupActivity : AppCompatActivity() {
     private lateinit var store: NvrStore
     private var forceEdit = false
 
+    // Legacy READ_EXTERNAL_STORAGE prompt for restoring a backup from Downloads on API <= 32.
+    // We proceed to the restore picker regardless of the grant outcome, matching prior behavior.
+    private val restorePermLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { openRestore() }
+
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@registerForActivityResult
         lifecycleScope.launch {
@@ -71,6 +76,18 @@ class SetupActivity : AppCompatActivity() {
         wireButtons()
 
         if (forceEdit) showStep(STEP_SERVER) else showStep(STEP_WELCOME)
+
+        // BACK steps the wizard back instead of exiting (unless we're on the welcome step).
+        onBackPressedDispatcher.addCallback(this) {
+            when (binding.flipper.displayedChild) {
+                STEP_CREDS -> showStep(STEP_SERVER)
+                STEP_RESTORE -> showStep(STEP_WELCOME)
+                STEP_SERVER -> if (!forceEdit) showStep(STEP_WELCOME) else {
+                    isEnabled = false; onBackPressedDispatcher.onBackPressed()
+                }
+                else -> { isEnabled = false; onBackPressedDispatcher.onBackPressed() }
+            }
+        }
     }
 
     private fun wireButtons() = with(binding) {
@@ -108,18 +125,10 @@ class SetupActivity : AppCompatActivity() {
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) !=
             PackageManager.PERMISSION_GRANTED
         if (needsPerm) {
-            ActivityCompat.requestPermissions(
-                this, arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), PERM_RESTORE)
+            restorePermLauncher.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
         } else {
             openRestore()
         }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERM_RESTORE) openRestore()
     }
 
     private fun openRestore() {
@@ -268,19 +277,8 @@ class SetupActivity : AppCompatActivity() {
         binding.statusText.visibility = View.VISIBLE
     }
 
-    /** BACK steps the wizard back instead of exiting (unless we're on the welcome step). */
-    override fun onBackPressed() {
-        when (binding.flipper.displayedChild) {
-            STEP_SERVER -> if (!forceEdit) showStep(STEP_WELCOME) else super.onBackPressed()
-            STEP_CREDS -> showStep(STEP_SERVER)
-            STEP_RESTORE -> showStep(STEP_WELCOME)
-            else -> super.onBackPressed()
-        }
-    }
-
     companion object {
         const val EXTRA_EDIT = "edit"
-        private const val PERM_RESTORE = 71
         private const val STEP_WELCOME = 0
         private const val STEP_SERVER = 1
         private const val STEP_CREDS = 2

@@ -18,5 +18,7 @@ keystore.properties
 # Test screenshots contain real camera footage — keep them out of the repo
 .claude/skills/run-hik-tv-viewer/shots/
 
-# Internal audit report — kept local, not published
+# Internal audit / modernization reports — kept local, not published
 /AUDIT_REPORT.md
+/MODERNIZATION_REPORT.md
+/hiktv-audit-prompt.md

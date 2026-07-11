@@ -8,6 +8,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.widget.Toast
+import androidx.activity.addCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -46,6 +48,10 @@ class GridActivity : AppCompatActivity() {
     private var backAt = 0L
     private var displayed: List<Camera> = emptyList()
 
+    // Fire-and-forget POST_NOTIFICATIONS prompt (result ignored; alerts degrade gracefully).
+    private val notifPermLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     // Bring the wall's streams back after we shed them under memory pressure (see onTrimMemory).
     private val restoreStreams = Runnable {
         if (::adapter.isInitialized && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
@@ -71,6 +77,18 @@ class GridActivity : AppCompatActivity() {
 
         binding.btnEmptyAutoDetect.setOnClickListener { runAutoDetect() }
         binding.btnEmptySettings.setOnClickListener { openMenu() }
+
+        // Double-press BACK to exit (single press shows a hint), via the modern dispatcher.
+        onBackPressedDispatcher.addCallback(this) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - backAt < 2000) {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+            } else {
+                backAt = now
+                Toast.makeText(this@GridActivity, "Press back again to exit", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         requestNotificationsIfNeeded()
         loadCameras()
@@ -217,7 +235,7 @@ class GridActivity : AppCompatActivity() {
             android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
             runCatching {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 11)
+                notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }
         }
     }
@@ -302,9 +320,4 @@ class GridActivity : AppCompatActivity() {
         finish()
     }
 
-    override fun onBackPressed() {
-        val now = SystemClock.elapsedRealtime()
-        if (now - backAt < 2000) super.onBackPressed()
-        else { backAt = now; Toast.makeText(this, "Press back again to exit", Toast.LENGTH_SHORT).show() }
-    }
 }

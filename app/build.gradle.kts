@@ -2,7 +2,6 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 // Release signing is read from keystore.properties (kept out of version control).
@@ -14,14 +13,14 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "com.hiktv.viewer"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.hiktv.viewer"
         minSdk = 23          // Android TV (Android 6.0+); required by EncryptedSharedPreferences
         targetSdk = 35
-        versionCode = 20
-        versionName = "2.3.6"
+        versionCode = 21
+        versionName = "2.4.0"
     }
 
     signingConfigs {
@@ -56,9 +55,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         viewBinding = true
     }
@@ -83,25 +79,36 @@ android {
     }
 }
 
+// AGP 9 built-in Kotlin: configure the JVM target here (replaces android.kotlinOptions).
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.12.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
-    implementation("androidx.leanback:leanback:1.0.0")
+    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("com.google.android.material:material:1.13.0")
+    implementation("androidx.recyclerview:recyclerview:1.4.0")
 
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.3")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
-    // ISAPI over HTTP Digest auth
+    // ISAPI over HTTP Digest auth. OkHttp is held at 4.12.0 (the last 4.x): okhttp-digest
+    // has no OkHttp 5 release, so 5.x cannot be adopted until upstream ships it.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("io.github.rburgst:okhttp-digest:3.1.0")
+    implementation("io.github.rburgst:okhttp-digest:3.1.1")
 
-    // Encrypted credential storage
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // Encrypted credential storage (live). security-crypto is deprecated upstream; the
+    // DataStore + Tink deps below are the SCAFFOLD for its eventual replacement (see
+    // SecureCredentialStore) and are inert until NvrStore.USE_DATASTORE is flipped.
+    implementation("androidx.security:security-crypto:1.1.0")
+    implementation("androidx.datastore:datastore-preferences:1.2.1")
+    implementation("com.google.crypto.tink:tink-android:1.15.0")
 
-    // Video engine: hardware-accelerated, H.264/H.265, RTSP, low-latency tunable
-    implementation("org.videolan.android:libvlc-all:3.6.0")
+    // Video engine: hardware-accelerated, H.264/H.265, RTSP, low-latency tunable.
+    // 3.7.5 is the latest stable 3.x (4.0.0 is still EAP/preview).
+    implementation("org.videolan.android:libvlc-all:3.7.5")
 }

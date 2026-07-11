@@ -143,7 +143,11 @@ class GridAdapter(
                 // (imperceptible for CCTV) for a stable picture.
                 networkCachingMs = 300,
                 muted = true,
-                hardware = hardware
+                hardware = hardware,
+                // Software-decoded tiles: ffmpeg would otherwise take ~cores+1 threads EACH
+                // (5 per tile on a quad-core → ~20 threads for a 4-up wall), which thrashes a weak
+                // TV CPU and badly delays the first frame. 2 per tile keeps the wall near core count.
+                decodeThreads = 2
             ) { state ->
                 binding.statusText.post {
                     val playing = state == CameraStream.State.PLAYING

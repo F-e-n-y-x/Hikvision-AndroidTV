@@ -18,12 +18,18 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.lifecycle.lifecycleScope
 import com.hiktv.viewer.core.Session
 import com.hiktv.viewer.data.RtspUrls
+import com.hiktv.viewer.data.ezviz.EzvizCloud
+import com.hiktv.viewer.data.isapi.IsapiClient
 import com.hiktv.viewer.data.model.Camera
+import com.hiktv.viewer.data.onvif.OnvifPtz
+import com.hiktv.viewer.data.ptz.EzvizCloudPtzController
+import com.hiktv.viewer.data.ptz.IsapiPtzController
+import com.hiktv.viewer.data.ptz.OnvifPtzController
+import com.hiktv.viewer.data.ptz.PtzController
 import com.hiktv.viewer.data.store.NvrStore
 import com.hiktv.viewer.databinding.ActivityFullscreenBinding
 import com.hiktv.viewer.player.CameraStream
 import com.hiktv.viewer.ui.camera.CameraSettingsActivity
-import com.hiktv.viewer.ui.control.ControlActivity
 import com.hiktv.viewer.ui.playback.PlaybackActivity
 import com.hiktv.viewer.ui.settings.SettingsActivity
 import kotlinx.coroutines.launch
@@ -52,6 +58,26 @@ class FullscreenActivity : AppCompatActivity() {
     private var muted = true
     private var leftLongFired = false
     private var downLongFired = false
+
+    // ---- In-place zoom / pan / PTZ overlay --------------------------------------------------
+    // Reuses THIS screen's live decoder/surface instead of launching a second video activity.
+    // Opening a second main-stream decoder + surface here was the Amlogic Mali surface-teardown
+    // crash (libGLES_mali SIGSEGV on the AWindowHandler thread) and the multi-second switch.
+    private enum class Mode { ZOOM, PAN, PTZ }
+    private var controlMode: Mode? = null
+    private var ptz: PtzController? = null
+    private var ptzResolved = false
+    private var ptzSupported = false
+    private var ptzActive = false
+    private var ptzWarned = false
+    private var hasDirect = false
+    private var isEzviz = false
+    private val ptzSpeed = 60
+    private val zoomSteps = floatArrayOf(1f, 1.5f, 2f, 2.5f, 3f, 4f, 5f)
+    private var zoomIndex = 0
+    private var panFx = 0f
+    private var panFy = 0f
+    private fun panStep(): Float = 0.5f / zoomSteps[zoomIndex]
 
     // Debounce camera switching: flicking ◀▶ shouldn't spin up a hardware decoder for every
     // camera passed through — that decoder churn can crash the video driver on weak TVs.
@@ -111,6 +137,9 @@ class FullscreenActivity : AppCompatActivity() {
                     if (state == CameraStream.State.ERROR) "Reconnecting…" else "Connecting…"
             }
         }.also { it.start(binding.videoLayout); it.setMuted(muted) }
+        // If the overlay is open (e.g. we returned from PiP/background while zoomed), the rebuilt
+        // surface starts at 1x — reapply the current zoom/pan once it has laid out.
+        if (controlMode != null) binding.videoLayout.post { applyTransform() }
     }
 
     // ---- Camera switching (◀ ▶) -------------------------------------------
@@ -150,6 +179,8 @@ class FullscreenActivity : AppCompatActivity() {
      * Handled in dispatchKeyEvent so it runs before D-pad focus navigation can consume the key.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // While the zoom/pan/PTZ overlay is open it owns every key (including BACK, which exits it).
+        if (controlMode != null) return handleControlKey(event)
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> {
                 when (event.action) {
@@ -203,11 +234,207 @@ class FullscreenActivity : AppCompatActivity() {
             .putExtra(CameraSettingsActivity.EXTRA_CHANNEL, camera.channel))
     }
 
+    /**
+     * Enter the zoom / pan / PTZ overlay ON this screen — no new activity, decoder, or surface.
+     * Zoom + pan are a GPU transform on the current stream; PTZ is ISAPI/ONVIF/EZVIZ commands.
+     */
     private fun openControl(ptzMode: Boolean = false) {
-        val intent = Intent(this, ControlActivity::class.java)
-            .putExtra(ControlActivity.EXTRA_CHANNEL, camera.channel)
-        if (ptzMode) intent.putExtra(ControlActivity.EXTRA_MODE, ControlActivity.MODE_PTZ)
-        startActivity(intent)
+        if (controlMode == null) resolveController()
+        controlMode = if (ptzMode && ptzSupported) Mode.PTZ else Mode.ZOOM
+        if (!ptzResolved) detectPtz(startInPtz = ptzMode)
+        applyTransform()
+        updateControlOverlay()
+    }
+
+    /** Leave the overlay: reset digital zoom/pan, stop any live PTZ, restore the normal hint. */
+    private fun exitControl() {
+        if (controlMode == null) return
+        if (ptzActive) stopPtz()
+        controlMode = null
+        zoomIndex = 0; panFx = 0f; panFy = 0f
+        applyTransform()
+        binding.zoomLabel.visibility = View.GONE
+        bindCamera()
+    }
+
+    private fun resolveController() {
+        val store = NvrStore(this)
+        val direct = store.loadDirect(camera.channel)
+        val serial = store.ezvizSerial(camera.channel)
+        val acct = store.ezvizAccount
+        val pass = store.ezvizPassword
+        isEzviz = serial != null && acct != null && pass != null
+        hasDirect = direct != null || isEzviz
+        ptz = when {
+            isEzviz -> EzvizCloudPtzController(EzvizCloud(), acct!!, pass!!, serial!!)
+            direct != null && store.loadDirectOnvif(camera.channel) ->
+                OnvifPtzController(OnvifPtz(direct.host, direct.httpPort, direct.username, direct.password))
+            direct != null -> IsapiPtzController(IsapiClient(direct), channel = 1)
+            else -> Session.isapi?.let { IsapiPtzController(it, camera.channel) }
+        }
+        // Reset PTZ availability too: this activity is reused across cameras, so a leftover
+        // ptzSupported=true from a previous PTZ camera would wrongly enter PTZ mode on a camera
+        // that has none (detectPtz only ever promotes to PTZ, never demotes).
+        ptzSupported = false
+        ptzResolved = false
+    }
+
+    private fun detectPtz(startInPtz: Boolean) {
+        val controller = ptz
+        if (controller == null) { ptzResolved = true; return }
+        if (isEzviz) {
+            // EZVIZ is a known pan/tilt unit — offer PTZ immediately; warm the slow login in bg.
+            ptzSupported = true; ptzResolved = true
+            if (startInPtz && controlMode != null) controlMode = Mode.PTZ
+            updateControlOverlay()
+            lifecycleScope.launch { runCatching { controller.probe() } }
+            return
+        }
+        lifecycleScope.launch {
+            ptzSupported = runCatching { controller.probe() }.getOrDefault(false)
+            ptzResolved = true
+            if (startInPtz && ptzSupported && controlMode != null) controlMode = Mode.PTZ
+            updateControlOverlay()
+        }
+    }
+
+    /** OK cycles ZOOM → PAN → PTZ → ZOOM (PTZ skipped when unavailable). */
+    private fun cycleControlMode() {
+        when (controlMode) {
+            Mode.ZOOM -> controlMode = Mode.PAN
+            Mode.PAN -> if (ptzSupported) {
+                resetZoom(); if (ptzActive) stopPtz(); controlMode = Mode.PTZ
+            } else {
+                if (hasDirect) toast("PTZ not responding — run ‘Test PTZ connection’ in camera settings")
+                controlMode = Mode.ZOOM
+            }
+            Mode.PTZ -> { if (ptzActive) stopPtz(); controlMode = Mode.ZOOM }
+            null -> return
+        }
+        updateControlOverlay()
+    }
+
+    /** Route a key event while the overlay is open. Returns true if consumed. */
+    private fun handleControlKey(event: KeyEvent): Boolean {
+        val keyCode = event.keyCode
+        if (event.action == KeyEvent.ACTION_UP) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN,
+                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_CHANNEL_DOWN,
+                KeyEvent.KEYCODE_PLUS, KeyEvent.KEYCODE_MINUS,
+                KeyEvent.KEYCODE_ZOOM_IN, KeyEvent.KEYCODE_ZOOM_OUT ->
+                    { if (ptzActive) stopPtz(); return true }
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN ->
+                    { if (controlMode == Mode.PTZ && ptzActive) stopPtz(); return true }
+            }
+            return true   // swallow other UP events so they don't reach normal handling
+        }
+        if (event.action != KeyEvent.ACTION_DOWN) return true
+        when (keyCode) {
+            KeyEvent.KEYCODE_BACK -> { exitControl(); return true }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A ->
+                { if (event.repeatCount == 0) cycleControlMode(); return true }  // ignore auto-repeat
+            KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_CHANNEL_UP,
+            KeyEvent.KEYCODE_PLUS, KeyEvent.KEYCODE_ZOOM_IN -> { onZoomKey(true, event); return true }
+            KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN,
+            KeyEvent.KEYCODE_MINUS, KeyEvent.KEYCODE_ZOOM_OUT -> { onZoomKey(false, event); return true }
+        }
+        // Key repeat: allow held panning, but not repeated zoom steps / PTZ bursts.
+        if (event.repeatCount > 0 && controlMode != Mode.PAN) return true
+        when (controlMode) {
+            Mode.PTZ -> when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT  -> sendPtz(-ptzSpeed, 0, 0)
+                KeyEvent.KEYCODE_DPAD_RIGHT -> sendPtz(ptzSpeed, 0, 0)
+                KeyEvent.KEYCODE_DPAD_UP    -> sendPtz(0, ptzSpeed, 0)
+                KeyEvent.KEYCODE_DPAD_DOWN  -> sendPtz(0, -ptzSpeed, 0)
+            }
+            Mode.ZOOM -> when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> stepZoom(true)
+                KeyEvent.KEYCODE_DPAD_DOWN -> stepZoom(false)
+            }
+            Mode.PAN -> when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> pan(-panStep(), 0f)
+                KeyEvent.KEYCODE_DPAD_RIGHT -> pan(panStep(), 0f)
+                KeyEvent.KEYCODE_DPAD_UP -> pan(0f, -panStep())
+                KeyEvent.KEYCODE_DPAD_DOWN -> pan(0f, panStep())
+            }
+            null -> {}
+        }
+        return true
+    }
+
+    private fun onZoomKey(zoomIn: Boolean, event: KeyEvent) {
+        if (controlMode == Mode.PTZ) {
+            if (event.repeatCount == 0) sendPtz(0, 0, if (zoomIn) ptzSpeed else -ptzSpeed)
+        } else if (event.repeatCount == 0) {
+            stepZoom(zoomIn)
+        }
+    }
+
+    private fun sendPtz(pan: Int, tilt: Int, zoom: Int) {
+        val controller = ptz ?: return
+        ptzActive = true
+        lifecycleScope.launch {
+            val ok = controller.move(pan, tilt, zoom)
+            if (!ok && !ptzWarned) {
+                ptzWarned = true
+                toast("Camera didn't accept PTZ. Set a direct ONVIF connection for it.")
+            }
+        }
+    }
+
+    private fun stopPtz() {
+        ptzActive = false
+        val controller = ptz ?: return
+        lifecycleScope.launch { runCatching { controller.stop() } }
+    }
+
+    private fun stepZoom(zoomIn: Boolean) {
+        zoomIndex = if (zoomIn) (zoomIndex + 1).coerceAtMost(zoomSteps.lastIndex)
+        else (zoomIndex - 1).coerceAtLeast(0)
+        if (zoomIndex == 0) { panFx = 0f; panFy = 0f }
+        applyTransform()
+        updateControlOverlay()
+    }
+
+    private fun resetZoom() {
+        zoomIndex = 0; panFx = 0f; panFy = 0f
+        applyTransform()
+        updateControlOverlay()
+    }
+
+    private fun pan(dx: Float, dy: Float) {
+        panFx = (panFx + dx).coerceIn(-1f, 1f)
+        panFy = (panFy + dy).coerceIn(-1f, 1f)
+        applyTransform()
+    }
+
+    private fun applyTransform() {
+        val scale = zoomSteps[zoomIndex]
+        val w = binding.videoLayout.width.toFloat()
+        val h = binding.videoLayout.height.toFloat()
+        val maxDx = (scale - 1f) / 2f * w
+        val maxDy = (scale - 1f) / 2f * h
+        stream?.setTransform(scale, -panFx * maxDx, -panFy * maxDy)
+    }
+
+    private fun updateControlOverlay() {
+        val mode = controlMode ?: return
+        val scale = zoomSteps[zoomIndex]
+        binding.zoomLabel.visibility = View.VISIBLE
+        binding.zoomLabel.text = when (mode) {
+            Mode.ZOOM -> "ZOOM ${scale}x"
+            Mode.PAN -> "PAN ${scale}x"
+            Mode.PTZ -> "PTZ"
+        }
+        binding.hint.visibility = View.VISIBLE
+        val nextDigital = if (ptzSupported) "Pan/PTZ" else "Pan"
+        binding.hint.text = when (mode) {
+            Mode.ZOOM -> "▲▼ / VOL: zoom   ·   OK: switch mode ($nextDigital)   ·   BACK: exit"
+            Mode.PAN -> "D-pad: pan the zoomed image   ·   OK: switch mode   ·   BACK: exit"
+            Mode.PTZ -> "D-pad: move camera   ·   VOL: zoom   ·   OK: back to zoom   ·   BACK: exit"
+        }
     }
 
     private fun openSettings() {
@@ -306,6 +533,7 @@ class FullscreenActivity : AppCompatActivity() {
     override fun onStop() {
         val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
         if (!inPip) {
+            if (ptzActive) stopPtz()
             switchHandler.removeCallbacks(startStreamRunnable)
             stream?.release()
             stream = null
@@ -314,6 +542,7 @@ class FullscreenActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (ptzActive) stopPtz()
         switchHandler.removeCallbacks(startStreamRunnable)
         stream?.release()
         stream = null

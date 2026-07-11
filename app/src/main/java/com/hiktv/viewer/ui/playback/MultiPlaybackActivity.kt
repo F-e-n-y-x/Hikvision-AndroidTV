@@ -55,6 +55,9 @@ class MultiPlaybackActivity : AppCompatActivity() {
     private var anchorElapsed = 0L
     private var hasPlayed = false
     private var playGen = 0
+    // Set when the initial auto-play is deferred because we weren't STARTED (backgrounded during
+    // the recording search); onStart consumes it so returning to the screen actually starts the wall.
+    private var pendingAutoPlay = false
 
     // Ignore the leftover ▼ key-up/repeats from the grid long-press that launched us, so that
     // press doesn't immediately scrub. Real remote commands register after this.
@@ -169,8 +172,15 @@ class MultiPlaybackActivity : AppCompatActivity() {
                 binding.timeline.setPlayhead(playhead)
                 updateTimeLabel()
             }
-            // Auto-start so the wall plays immediately (no extra button press needed).
-            playAllFrom(playhead)
+            // Auto-start so the wall plays immediately (no extra button press needed) — but only
+            // if we're still on-screen. The search above can take seconds across N cameras; if the
+            // user left during it, allocating up to MAX_CELLS decoders now would spin them up
+            // off-screen (MediaCodec exhaustion / reboot on weak SoCs). Defer to onStart instead.
+            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                playAllFrom(playhead)
+            } else {
+                pendingAutoPlay = true
+            }
         }
     }
 
@@ -313,8 +323,11 @@ class MultiPlaybackActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        // Resume after returning from background (we released everything in onStop).
-        if (hasPlayed && cells.isNotEmpty() && players.all { it == null } && !isFinishing) {
+        // Resume after returning from background (we released everything in onStop), OR run the
+        // initial auto-play that was deferred because we weren't STARTED when the search finished.
+        val resumeReady = hasPlayed && cells.isNotEmpty()
+        if ((resumeReady || pendingAutoPlay) && players.all { it == null } && !isFinishing) {
+            pendingAutoPlay = false
             binding.grid.postDelayed(resumeRunnable, 250)
         }
     }

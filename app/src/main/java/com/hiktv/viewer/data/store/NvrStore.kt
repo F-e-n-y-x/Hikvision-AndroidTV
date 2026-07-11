@@ -226,6 +226,13 @@ class NvrStore(context: Context) {
     }
 
     companion object {
+        /**
+         * Switch for the DataStore + Tink credential backend (see [SecureCredentialStore]).
+         * Keep false: the scaffold is inert until its one-time migration is device-verified and
+         * NvrStore's synchronous callers are converted to coroutines. See MODERNIZATION_REPORT.md.
+         */
+        const val USE_DATASTORE = false
+
         private const val K_HOST = "host"
         private const val K_HTTP = "http_port"
         private const val K_RTSP = "rtsp_port"
