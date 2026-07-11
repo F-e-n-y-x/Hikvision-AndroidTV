@@ -32,6 +32,13 @@ class CameraStream(
     private val highQuality: Boolean = false,
     private val directRender: Boolean = false,
     private val directDisplay: Boolean = false,
+    /**
+     * Cap on ffmpeg's software-decode threads for THIS stream (0 = let ffmpeg decide).
+     * ffmpeg defaults to ~cores+1 (5 on a quad-core TV) *per stream*, so a 4-tile wall spawns
+     * ~20 decode threads on 4 cores and thrashes — which shows up as a very slow first frame.
+     * Bounding it per tile keeps the total near the core count.
+     */
+    private val decodeThreads: Int = 0,
     private val onState: (State) -> Unit = {}
 ) {
 
@@ -143,6 +150,7 @@ class CameraStream(
             // correctly. Some chips (Amlogic Mi Box) are the opposite — the copy path is too slow
             // and crashes — so [directRender] lets those devices keep zero-copy rendering.
             if (hardware && !directRender) addOption(":no-mediacodec-dr")
+            if (decodeThreads > 0) addOption(":avcodec-threads=$decodeThreads")
             addOption(":network-caching=$networkCachingMs")
             addOption(":rtsp-tcp")
             addOption(":clock-jitter=0")
