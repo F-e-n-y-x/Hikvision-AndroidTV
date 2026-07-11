@@ -143,7 +143,12 @@ class GridAdapter(
                 // (imperceptible for CCTV) for a stable picture.
                 networkCachingMs = 300,
                 muted = true,
-                hardware = hardware
+                hardware = hardware,
+                // Amlogic (Mali) crashes in libGLES_mali on the video-window thread when VLC uses
+                // its default OpenGL vout. Force the no-GL direct display path (software-blit into
+                // each tile's SurfaceView) — the same path fullscreen already uses on Amlogic —
+                // so the wall renders without touching the buggy Mali GL driver.
+                directDisplay = com.hiktv.viewer.util.DeviceQuirks.isAmlogic
             ) { state ->
                 binding.statusText.post {
                     val playing = state == CameraStream.State.PLAYING
