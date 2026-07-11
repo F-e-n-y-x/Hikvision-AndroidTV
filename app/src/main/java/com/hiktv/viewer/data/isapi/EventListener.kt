@@ -42,6 +42,10 @@ class EventListener(private val isapi: IsapiClient) {
             .get().build()
 
         isapi.httpClient().newCall(req).execute().use { resp ->
+            // A 401/403 (account lacks alert permission) or 404 (different firmware path) returns a
+            // non-null error page, not an event stream — reading it would loop forever emitting
+            // nothing. Bail so the caller's retry/backoff can treat it as a failure.
+            if (!resp.isSuccessful) return@use
             val source = resp.body?.source() ?: return@use
             val block = StringBuilder()
             while (!source.exhausted()) {

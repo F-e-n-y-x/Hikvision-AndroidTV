@@ -272,6 +272,10 @@ class FullscreenActivity : AppCompatActivity() {
             direct != null -> IsapiPtzController(IsapiClient(direct), channel = 1)
             else -> Session.isapi?.let { IsapiPtzController(it, camera.channel) }
         }
+        // Reset PTZ availability too: this activity is reused across cameras, so a leftover
+        // ptzSupported=true from a previous PTZ camera would wrongly enter PTZ mode on a camera
+        // that has none (detectPtz only ever promotes to PTZ, never demotes).
+        ptzSupported = false
         ptzResolved = false
     }
 
@@ -330,7 +334,7 @@ class FullscreenActivity : AppCompatActivity() {
         when (keyCode) {
             KeyEvent.KEYCODE_BACK -> { exitControl(); return true }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A ->
-                { cycleControlMode(); return true }
+                { if (event.repeatCount == 0) cycleControlMode(); return true }  // ignore auto-repeat
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_CHANNEL_UP,
             KeyEvent.KEYCODE_PLUS, KeyEvent.KEYCODE_ZOOM_IN -> { onZoomKey(true, event); return true }
             KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN,

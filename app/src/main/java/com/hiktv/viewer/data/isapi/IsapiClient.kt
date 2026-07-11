@@ -374,8 +374,15 @@ class IsapiClient(private val nvr: Nvr) {
             tz.isEmpty() || tz.startsWith("Z") -> 0L
             else -> {
                 val sign = if (tz[0] == '-') -1 else 1
-                val hh = tz.drop(1).substringBefore(":").toIntOrNull() ?: 0
-                val mm = tz.substringAfter(":", "0").toIntOrNull() ?: 0
+                val body = tz.drop(1)
+                // Accept both "+05:30" and the colon-less "+0530" some Hik firmwares emit. The old
+                // code did substringBefore(":") which turned "0530" into hh=530 (~530 hours off).
+                val (hh, mm) = if (body.contains(":")) {
+                    (body.substringBefore(":").toIntOrNull() ?: 0) to (body.substringAfter(":").toIntOrNull() ?: 0)
+                } else {
+                    val digits = body.filter { it.isDigit() }
+                    (digits.take(2).toIntOrNull() ?: 0) to (digits.drop(2).take(2).toIntOrNull() ?: 0)
+                }
                 sign * (hh * 3600_000L + mm * 60_000L)
             }
         }
