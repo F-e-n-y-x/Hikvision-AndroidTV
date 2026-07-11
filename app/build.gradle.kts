@@ -108,6 +108,7 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("com.google.crypto.tink:tink-android:1.15.0")
 
-    // Video engine: hardware-accelerated, H.264/H.265, RTSP, low-latency tunable
-    implementation("org.videolan.android:libvlc-all:3.6.4")
+    // Video engine: hardware-accelerated, H.264/H.265, RTSP, low-latency tunable.
+    // 3.7.5 is the latest stable 3.x (4.0.0 is still EAP/preview).
+    implementation("org.videolan.android:libvlc-all:3.7.5")
 }
