@@ -1,0 +1,6 @@
+# Hand-written baseline profile: AOT-compile the app's own startup/grid path on first install so a
+# cold start on a weak TV box doesn't run it interpreted. Wildcards are expanded by AGP's profgen.
+# Regenerate with a Macrobenchmark BaselineProfileRule on a real device if finer control is needed.
+HSPLcom/hiktv/viewer/**;->**(**)**
+Lcom/hiktv/viewer/**;
+HSPLandroidx/recyclerview/widget/**;->**(**)**

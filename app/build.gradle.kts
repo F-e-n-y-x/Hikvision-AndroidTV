@@ -104,6 +104,8 @@ dependencies {
     // Encrypted credential storage. security-crypto is deprecated upstream; tink is pinned newer
     // than the 1.8 it pulls in transitively.
     implementation("androidx.security:security-crypto:1.1.0")
+    // Installs the baseline profile (src/main/baseline-prof.txt) on first launch, incl. sideloads.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("com.google.crypto.tink:tink-android:1.15.0")
 
     // Video engine: hardware-accelerated, H.264/H.265, RTSP, low-latency tunable.

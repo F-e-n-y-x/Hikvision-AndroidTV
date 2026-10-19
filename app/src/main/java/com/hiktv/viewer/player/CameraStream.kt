@@ -70,6 +70,9 @@ class CameraStream(
     // When the stream last entered Playing. Backoff is only reset after it stays up a while, so a
     // stream that flaps (Playing → error → Playing …) can't keep resetting to the 1s minimum.
     @Volatile private var playingSince = 0L
+    // Playing fires before the first decoded frame (the tile would flash black), so PLAYING is
+    // reported on the first TimeChanged after it instead. Reset on every (re)start.
+    @Volatile private var frameShown = false
     private val watchdog = object : Runnable {
         override fun run() {
             if (released || stopped) return
@@ -91,13 +94,16 @@ class CameraStream(
                     // Note: backoff (retryDelay) is deliberately NOT reset here — see TimeChanged.
                     playingSince = SystemClock.elapsedRealtime()
                     lastProgressAt = playingSince
-                    main.post { onState(State.PLAYING) }
                 }
                 // Fires continuously while frames actually flow — our liveness signal. When it
                 // stops (a silent stall that raises no error), the watchdog reconnects.
                 MediaPlayer.Event.TimeChanged -> {
                     val now = SystemClock.elapsedRealtime()
                     lastProgressAt = now
+                    if (!frameShown) {
+                        frameShown = true
+                        main.post { onState(State.PLAYING) }
+                    }
                     // Reset backoff only after the stream has been stably playing for a while: a
                     // genuinely recovered stream forgets its penalty, a flapping one keeps it.
                     if (retryDelay > 1000L && playingSince > 0L && now - playingSince > STABLE_RESET_MS) {
@@ -135,6 +141,7 @@ class CameraStream(
 
     private fun play() {
         if (released) return
+        frameShown = false
         onState(State.CONNECTING)
         // Reset the liveness clock so a freshly (re)started stream gets a full grace window before
         // the watchdog can judge it stalled.
