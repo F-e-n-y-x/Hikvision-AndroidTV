@@ -87,7 +87,7 @@ Opens **instantly, right on the live picture** — it reuses the stream already 
 | **▲▼ / Vol** | Zoom in-out · **D-pad** pans the image (Pan) or moves the camera (PTZ) |
 | **Back** | Close the overlay (back to plain fullscreen) |
 
-**⏪ Playback** — **◀ ▶** scrub · **▲ ▼** jump ±1h · **OK** play/pause · **Back** exit.
+**⏪ Playback** — **◀ ▶** scrub · **▲ ▼** jump ±1h · scrub past midnight to move to the previous or next day (up to 90 days back) · **OK** play/pause · **Back** exit.
 
 ---
 

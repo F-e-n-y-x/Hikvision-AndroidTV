@@ -57,6 +57,8 @@ class MultiPlaybackActivity : AppCompatActivity() {
     private var playing = false
     private var anchorElapsed = 0L
     private var hasPlayed = false
+    private var userMoved = false
+    private var segJob: kotlinx.coroutines.Job? = null
     private var playGen = 0
     // Set when the initial auto-play is deferred because we weren't STARTED (backgrounded during
     // the recording search); onStart consumes it so returning to the screen actually starts the wall.
@@ -162,8 +164,10 @@ class MultiPlaybackActivity : AppCompatActivity() {
         n <= 1 -> 1; n <= 4 -> 2; n <= 9 -> 3; else -> 4
     }
 
-    private fun loadSegments() {
-        lifecycleScope.launch {
+    /** [initial]: first load of a session — jump near the latest recording and auto-start the wall. */
+    private fun loadSegments(initial: Boolean = true) {
+        segJob?.cancel()                       // a day change supersedes a search still in flight
+        segJob = lifecycleScope.launch {
             val isapi = Session.isapi
             // One search per camera, all in parallel (was sequential: up to 9 round trips in a row).
             val all = if (isapi == null) emptyList() else coroutineScope {
@@ -176,11 +180,13 @@ class MultiPlaybackActivity : AppCompatActivity() {
                 }.awaitAll().flatten()
             }
             binding.timeline.setSegments(all.sortedBy { it.startMs })
-            all.maxOfOrNull { it.endMs }?.let {
+            // Only if the user hasn't already moved the playhead while the search ran.
+            if (initial && !userMoved) all.maxOfOrNull { it.endMs }?.let {
                 playhead = (it - 120_000L).coerceIn(windowStart, windowEnd)
                 binding.timeline.setPlayhead(playhead)
                 updateTimeLabel()
             }
+            if (!initial) return@launch        // day change: wait for OK, don't spin up N decoders
             // Auto-start so the wall plays immediately (no extra button press needed) — but only
             // if we're still on-screen. The search above can take seconds across N cameras; if the
             // user left during it, allocating up to MAX_CELLS decoders now would spin them up
@@ -215,10 +221,34 @@ class MultiPlaybackActivity : AppCompatActivity() {
     private fun stepFor(event: KeyEvent): Long =
         if (event.repeatCount > 6) 300_000L else if (event.repeatCount > 2) 120_000L else 30_000L
 
+    private fun pseudoNow(): Long =
+        System.currentTimeMillis() + TimeZone.getDefault().getOffset(System.currentTimeMillis())
+
+    /** Switch the 24 h window (previous/next day) and keep the playhead at [headMs]. */
+    private fun gotoDay(newStart: Long, headMs: Long) {
+        windowStart = newStart
+        windowEnd = newStart + day
+        playhead = headMs.coerceIn(windowStart, windowEnd)
+        binding.timeline.setWindow(windowStart, windowEnd)
+        binding.timeline.setSegments(emptyList())
+        binding.timeline.setPlayhead(playhead)
+        binding.dayLabel.text = dayFmt.format(Date(windowStart))
+        updateTimeLabel()
+        loadSegments(initial = false)
+    }
+
     private fun scrub(deltaMs: Long) {
         pauseAll()
         releasePlayers()
-        playhead = (playhead + deltaMs).coerceIn(windowStart, windowEnd)
+        userMoved = true
+        val target = playhead + deltaMs
+        val today = (pseudoNow() / day) * day
+        // Scrubbing past either edge rolls into the neighbouring day (never into the future).
+        if (target < windowStart && windowStart - day >= today - MAX_DAYS_BACK * day) {
+            gotoDay(windowStart - day, target); return
+        }
+        if (target > windowEnd && windowEnd <= pseudoNow()) { gotoDay(windowEnd, target); return }
+        playhead = target.coerceIn(windowStart, windowEnd)
         binding.timeline.setPlayhead(playhead)
         updateTimeLabel()
     }
@@ -360,5 +390,6 @@ class MultiPlaybackActivity : AppCompatActivity() {
     companion object {
         /** Max cameras decoded at once in synced playback (guards weak TVs from MediaCodec exhaustion). */
         private const val MAX_CELLS = 9
+        private const val MAX_DAYS_BACK = 90L
     }
 }

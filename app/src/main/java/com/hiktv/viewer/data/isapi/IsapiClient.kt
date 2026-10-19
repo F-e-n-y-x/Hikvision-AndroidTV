@@ -28,6 +28,10 @@ import javax.net.ssl.X509TrustManager
 private val ID_RE = Regex("<id>\\s*(\\d+)\\s*</id>")
 private val START_RE = Regex("<startTime>(.*?)</startTime>")
 private val END_RE = Regex("<endTime>(.*?)</endTime>")
+private val ITEM_RE = Regex("<searchMatchItem>")
+private val MORE_RE = Regex("<responseStatusStrg>\\s*MORE", RegexOption.IGNORE_CASE)
+private const val PAGE_SIZE = 200
+private const val MAX_PAGES = 10          // 2000 segments per camera per day is far beyond real use
 
 // SimpleDateFormat isn't thread-safe and searches run on IO threads, so one per thread.
 private val utcParser = ThreadLocal.withInitial {
@@ -348,21 +352,36 @@ class IsapiClient(private val nvr: Nvr) {
     suspend fun searchRecordings(channel: Int, startMs: Long, endMs: Long): List<Segment> =
         withContext(Dispatchers.IO) {
             val track = channel * 100 + 1
-            val body = """
+            val searchId = UUID.randomUUID()
+            fun body(position: Int) = """
                 <?xml version="1.0" encoding="utf-8"?>
                 <CMSearchDescription>
-                  <searchID>${UUID.randomUUID()}</searchID>
+                  <searchID>$searchId</searchID>
                   <trackList><trackID>$track</trackID></trackList>
                   <timeSpanList><timeSpan>
                     <startTime>${utc(startMs)}</startTime>
                     <endTime>${utc(endMs)}</endTime>
                   </timeSpan></timeSpanList>
-                  <maxResults>200</maxResults>
-                  <searchResultPostion>0</searchResultPostion>
+                  <maxResults>$PAGE_SIZE</maxResults>
+                  <searchResultPostion>$position</searchResultPostion>
                 </CMSearchDescription>
             """.trimIndent()
-            runCatching { parseSegments(post("/ISAPI/ContentMgmt/search", body)) }
-                .getOrDefault(emptyList())
+
+            // The NVR returns at most PAGE_SIZE items per call and flags the rest with
+            // responseStatusStrg=MORE: keep paging so a busy day isn't silently truncated.
+            val out = ArrayList<Segment>()
+            var position = 0
+            repeat(MAX_PAGES) {
+                val xml = runCatching { post("/ISAPI/ContentMgmt/search", body(position)) }.getOrNull()
+                    ?: return@withContext out.sortedBy { it.startMs }   // keep what we already have
+                val page = parseSegments(xml)
+                out += page
+                // numOfMatches is the TOTAL for the search, not this page, so advance by the items returned.
+                val returned = ITEM_RE.findAll(xml).count()
+                if (returned == 0 || !MORE_RE.containsMatchIn(xml)) return@withContext out.sortedBy { it.startMs }
+                position += returned
+            }
+            out.sortedBy { it.startMs }
         }
 
     private fun parseSegments(xml: String): List<Segment> {

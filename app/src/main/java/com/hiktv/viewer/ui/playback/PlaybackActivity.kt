@@ -48,6 +48,8 @@ class PlaybackActivity : AppCompatActivity() {
     private var playing = false
     /** Playhead where playback was paused; OK resumes in place only if it hasn't been scrubbed since. */
     private var pausedAt = -1L
+    private var userMoved = false
+    private var segJob: kotlinx.coroutines.Job? = null
 
     /** Wall-clock anchor: pseudo-time [playFrom] corresponds to elapsedRealtime [playAnchorElapsed]. */
     private var playAnchorElapsed = 0L
@@ -92,19 +94,39 @@ class PlaybackActivity : AppCompatActivity() {
     private fun loadSegments() {
         binding.status.visibility = View.VISIBLE
         binding.status.text = "Loading recordings…"
-        lifecycleScope.launch {
+        segJob?.cancel()                       // a day change supersedes a search still in flight
+        segJob = lifecycleScope.launch {
             val segs = Session.isapi?.searchRecordings(camera.channel, windowStart, windowEnd).orEmpty()
             binding.timeline.setSegments(segs)
-            binding.status.text = if (segs.isEmpty()) "No recordings today" else ""
+            binding.status.text = if (segs.isEmpty()) "No recordings on this day" else ""
             binding.status.visibility = if (segs.isEmpty()) View.VISIBLE else View.GONE
             // Start a couple of minutes before the end of the latest recording — NOT its very
             // last frame, which would hit end-of-recording instantly and show a black screen.
-            segs.lastOrNull()?.let {
+            // Only if the user hasn't already moved the playhead while the search ran.
+            if (!userMoved) segs.lastOrNull()?.let {
                 playhead = (it.endMs - 120_000L).coerceIn(it.startMs, windowEnd)
             }
             binding.timeline.setPlayhead(playhead)
             updateTimeLabel()
         }
+    }
+
+    private fun pseudoNow(): Long =
+        System.currentTimeMillis() + TimeZone.getDefault().getOffset(System.currentTimeMillis())
+
+    /** Switch the 24 h window (previous/next day) and keep the playhead at [headMs]. */
+    private fun gotoDay(newStart: Long, headMs: Long) {
+        releasePlayer()                        // the old session's RTSP range belongs to the old day
+        pausedAt = -1L
+        windowStart = newStart
+        windowEnd = newStart + day
+        playhead = headMs.coerceIn(windowStart, windowEnd)
+        binding.timeline.setWindow(windowStart, windowEnd)
+        binding.timeline.setSegments(emptyList())
+        binding.timeline.setPlayhead(playhead)
+        binding.dayLabel.text = dayFmt.format(Date(windowStart))
+        updateTimeLabel()
+        loadSegments()
     }
 
     // ---- Controls ----------------------------------------------------------
@@ -133,7 +155,16 @@ class PlaybackActivity : AppCompatActivity() {
 
     private fun scrub(deltaMs: Long) {
         if (playing) pausePlayback()
-        playhead = (playhead + deltaMs).coerceIn(windowStart, windowEnd)
+        userMoved = true
+        val target = playhead + deltaMs
+        val today = (pseudoNow() / day) * day
+        // Scrubbing past either edge rolls into the neighbouring day (never into the future, and
+        // not further back than MAX_DAYS_BACK).
+        if (target < windowStart && windowStart - day >= today - MAX_DAYS_BACK * day) {
+            gotoDay(windowStart - day, target); return
+        }
+        if (target > windowEnd && windowEnd <= pseudoNow()) { gotoDay(windowEnd, target); return }
+        playhead = target.coerceIn(windowStart, windowEnd)
         binding.timeline.setPlayhead(playhead)
         updateTimeLabel()
     }
@@ -307,5 +338,6 @@ class PlaybackActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_CHANNEL = "channel"
+        private const val MAX_DAYS_BACK = 90L
     }
 }
