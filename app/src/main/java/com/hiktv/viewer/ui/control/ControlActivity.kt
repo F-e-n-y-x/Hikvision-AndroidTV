@@ -16,6 +16,7 @@ import com.hiktv.viewer.data.ptz.EzvizCloudPtzController
 import com.hiktv.viewer.data.ptz.IsapiPtzController
 import com.hiktv.viewer.data.ptz.OnvifPtzController
 import com.hiktv.viewer.data.ptz.PtzController
+import com.hiktv.viewer.data.ptz.serialized
 import com.hiktv.viewer.data.store.NvrStore
 import com.hiktv.viewer.databinding.ActivityControlBinding
 import com.hiktv.viewer.player.CameraStream
@@ -83,7 +84,7 @@ class ControlActivity : AppCompatActivity() {
     }
 
     private fun resolveController() {
-        val store = NvrStore(this)
+        val store = NvrStore.get(this)
         val direct = store.loadDirect(camera.channel)
         val serial = store.ezvizSerial(camera.channel)
         val acct = store.ezvizAccount
@@ -93,19 +94,19 @@ class ControlActivity : AppCompatActivity() {
         hasDirect = direct != null || ezviz
         ptz = when {
             ezviz ->
-                EzvizCloudPtzController(EzvizCloud(), acct!!, pass!!, serial!!)
+                EzvizCloudPtzController(EzvizCloud.forAccount(acct!!), acct, pass!!, serial!!)
             direct != null && store.loadDirectOnvif(camera.channel) ->
                 OnvifPtzController(OnvifPtz(direct.host, direct.httpPort, direct.username, direct.password))
             direct != null ->
                 IsapiPtzController(IsapiClient(direct), channel = 1)
             else ->
                 Session.isapi?.let { IsapiPtzController(it, camera.channel) }
-        }
+        }?.serialized()
     }
 
     private fun startStream() {
         val nvr = Session.nvr ?: return
-        val store = NvrStore(this)
+        val store = NvrStore.get(this)
         val url = RtspUrls.live(nvr, camera, sub = false)
         val hw = store.decoderMode != 2
         stream?.release()

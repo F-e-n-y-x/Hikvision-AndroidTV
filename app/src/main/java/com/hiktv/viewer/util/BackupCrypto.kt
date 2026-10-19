@@ -1,9 +1,11 @@
 package com.hiktv.viewer.util
 
+import android.os.Build
 import android.util.Base64
 import org.json.JSONObject
 import java.security.SecureRandom
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
@@ -60,9 +62,28 @@ object BackupCrypto {
     }.getOrNull()
 
     private fun deriveKey(pin: String, salt: ByteArray, iterations: Int): SecretKeySpec {
+        if (Build.VERSION.SDK_INT < 26) return SecretKeySpec(pbkdf2Sha256(pin, salt, iterations), "AES")
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
         val spec = PBEKeySpec(pin.toCharArray(), salt, iterations, KEY_BITS)
         return SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
+    }
+
+    /**
+     * PBKDF2-HMAC-SHA256 for API 23-25, where SecretKeyFactory lacks it. One output block is enough
+     * (KEY_BITS == SHA-256 size), so this stays byte-identical to the factory's result.
+     */
+    private fun pbkdf2Sha256(pin: String, salt: ByteArray, iterations: Int): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256").apply {
+            init(SecretKeySpec(pin.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        }
+        mac.update(salt)
+        var u = mac.doFinal(byteArrayOf(0, 0, 0, 1))
+        val t = u.copyOf()
+        repeat(iterations - 1) {
+            u = mac.doFinal(u)
+            for (i in t.indices) t[i] = (t[i].toInt() xor u[i].toInt()).toByte()
+        }
+        return t
     }
 
     private fun b64(b: ByteArray) = Base64.encodeToString(b, Base64.NO_WRAP)

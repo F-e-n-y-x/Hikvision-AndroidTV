@@ -29,7 +29,7 @@
 
 - **Kotlin**, one Hikvision NVR; every camera is an NVR channel. The RTSP channel id is
   `channel*100 + streamType` (**101** = ch1 main, **102** = ch1 sub).
-- **[LibVLC](https://www.videolan.org/vlc/libvlc.html)** (`org.videolan.android:libvlc-all:3.6.0`)
+- **[LibVLC](https://www.videolan.org/vlc/libvlc.html)** (`org.videolan.android:libvlc-all:3.7.5`)
   plays the RTSP streams — H.264 **and** H.265, hardware decode, low-latency tuning. ExoPlayer's RTSP
   doesn't reliably do H.265, which is why LibVLC is used.
 - **ISAPI** (HTTP Digest, OkHttp + okhttp-digest) for discovery, snapshots, recordings, Hikvision PTZ
@@ -37,7 +37,7 @@
 - The **grid** uses each camera's small **sub-stream**; **fullscreen / playback** use the high-res
   **main** stream. Streams are released when you leave a screen, so a weak TV never decodes more than
   it must.
-- `minSdk 23`, `targetSdk / compileSdk 35`, ViewBinding, R8 + resource shrink on release, ABI splits
+- `minSdk 23`, `targetSdk 35`, `compileSdk 37`, ViewBinding, R8 + resource shrink on release, ABI splits
   (`armeabi-v7a`, `arm64-v8a`, `x86`) + universal.
 
 ```text
@@ -266,7 +266,7 @@ skew), puts the WS-Action in the Content-Type. Consumer EZVIZ usually expose **n
 
 ## Build from source
 
-Requires **Android Studio 2024.1+**, **JDK 17**, the Android SDK.
+Requires **a current Android Studio (AGP 9.2)**, **JDK 17+**, the Android SDK.
 
 ```bash
 # Debug (no signing key needed)

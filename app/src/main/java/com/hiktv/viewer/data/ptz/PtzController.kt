@@ -3,6 +3,8 @@ package com.hiktv.viewer.data.ptz
 import com.hiktv.viewer.data.ezviz.EzvizCloud
 import com.hiktv.viewer.data.isapi.IsapiClient
 import com.hiktv.viewer.data.onvif.OnvifPtz
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * One PTZ surface for the UI, regardless of how the camera is actually reached:
@@ -14,6 +16,20 @@ interface PtzController {
     suspend fun probe(): Boolean
     suspend fun move(pan: Int, tilt: Int, zoom: Int): Boolean
     suspend fun stop(): Boolean
+}
+
+/**
+ * Runs move/stop one at a time in call order, so a quick tap can't deliver STOP before MOVE
+ * (which leaves the camera panning forever). Callers launch from the main thread, so the fair
+ * Mutex keeps the order the keys were pressed in.
+ */
+fun PtzController.serialized(): PtzController {
+    val inner = this
+    val lock = Mutex()
+    return object : PtzController by inner {
+        override suspend fun move(pan: Int, tilt: Int, zoom: Int) = lock.withLock { inner.move(pan, tilt, zoom) }
+        override suspend fun stop() = lock.withLock { inner.stop() }
+    }
 }
 
 /** PTZ over Hikvision ISAPI — either the NVR (channel = camera channel) or a direct camera (channel 1). */

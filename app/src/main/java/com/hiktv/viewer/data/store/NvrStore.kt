@@ -11,19 +11,16 @@ import com.hiktv.viewer.data.model.Nvr
  * Persists the single NVR connection. Credentials are stored in
  * EncryptedSharedPreferences (AES-256) so they are not left in plaintext on the device.
  */
-class NvrStore(context: Context) {
+class NvrStore private constructor(context: Context) {
 
-    private val prefs: SharedPreferences = run {
-        val key = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        EncryptedSharedPreferences.create(
-            context,
-            "nvr_secure_prefs",
-            key,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+    private val prefs: SharedPreferences = try {
+        openPrefs(context)
+    } catch (_: Exception) {
+        // Keystore/keyset got out of sync (restore, OS update): the old file is unreadable, so
+        // wipe it and start clean instead of crash-looping at launch.
+        context.deleteSharedPreferences(FILE)
+        context.deleteSharedPreferences("__androidx_security_crypto_encrypted_prefs__")
+        openPrefs(context)
     }
 
     fun save(nvr: Nvr) {
@@ -203,7 +200,8 @@ class NvrStore(context: Context) {
 
     /** Replace all settings from a JSON backup produced by [exportJson]. */
     fun importJson(json: String) {
-        val obj = org.json.JSONObject(json)
+        val obj = org.json.JSONObject(json)   // throws on malformed input, before anything is touched
+        require(obj.has(K_HOST)) { "not a Hik TV Viewer backup" }
         val e = prefs.edit()
         e.clear()
         for (key in obj.keys()) {
@@ -226,12 +224,28 @@ class NvrStore(context: Context) {
     }
 
     companion object {
-        /**
-         * Switch for the DataStore + Tink credential backend (see [SecureCredentialStore]).
-         * Keep false: the scaffold is inert until its one-time migration is device-verified and
-         * NvrStore's synchronous callers are converted to coroutines. See MODERNIZATION_REPORT.md.
-         */
-        const val USE_DATASTORE = false
+        private const val FILE = "nvr_secure_prefs"
+
+        @Volatile private var instance: NvrStore? = null
+
+        /** Shared instance: building EncryptedSharedPreferences costs Keystore round trips, so do it once. */
+        fun get(context: Context): NvrStore =
+            instance ?: synchronized(this) {
+                instance ?: NvrStore(context.applicationContext).also { instance = it }
+            }
+
+        private fun openPrefs(context: Context): SharedPreferences {
+            val key = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            return EncryptedSharedPreferences.create(
+                context,
+                FILE,
+                key,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }
 
         private const val K_HOST = "host"
         private const val K_HTTP = "http_port"

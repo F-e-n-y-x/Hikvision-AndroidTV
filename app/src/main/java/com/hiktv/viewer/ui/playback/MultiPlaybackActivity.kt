@@ -20,6 +20,9 @@ import com.hiktv.viewer.data.model.Camera
 import com.hiktv.viewer.data.store.NvrStore
 import com.hiktv.viewer.databinding.ActivityMultiplaybackBinding
 import com.hiktv.viewer.player.PlayerEngine
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -161,10 +164,16 @@ class MultiPlaybackActivity : AppCompatActivity() {
 
     private fun loadSegments() {
         lifecycleScope.launch {
-            val all = ArrayList<IsapiClient.Segment>()
             val isapi = Session.isapi
-            if (isapi != null) for (c in cams) {
-                all += runCatching { isapi.searchRecordings(c.channel, windowStart, windowEnd) }.getOrDefault(emptyList())
+            // One search per camera, all in parallel (was sequential: up to 9 round trips in a row).
+            val all = if (isapi == null) emptyList() else coroutineScope {
+                cams.map { c ->
+                    async {
+                        try { isapi.searchRecordings(c.channel, windowStart, windowEnd) }
+                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (_: Exception) { emptyList() }
+                    }
+                }.awaitAll().flatten()
             }
             binding.timeline.setSegments(all.sortedBy { it.startMs })
             all.maxOfOrNull { it.endMs }?.let {
@@ -225,7 +234,7 @@ class MultiPlaybackActivity : AppCompatActivity() {
     private fun playAllFrom(fromPseudo: Long) {
         val nvr = Session.nvr ?: return
         releasePlayers()
-        val store = NvrStore(this)
+        val store = NvrStore.get(this)
         val amlogic = com.hiktv.viewer.util.DeviceQuirks.isAmlogic
         // Amlogic greens hardware H.265 on the multi-tile GL path (same rule as the grid; the
         // single-surface :vout overlay can't clip N cells either), so force SOFTWARE here regardless
@@ -241,23 +250,26 @@ class MultiPlaybackActivity : AppCompatActivity() {
         val gen = ++playGen
         binding.status.text = "Playing ${cams.size} cameras…"
         cams.forEachIndexed { i, cam ->
-            val url = RtspUrls.playback(nvr, cam, Date(fromPseudo), Date(windowEnd))
-            val mp = MediaPlayer(PlayerEngine.get(this))
-            mp.attachViews(cells[i], null, false, false)
-            val media = Media(PlayerEngine.get(this), Uri.parse(url)).apply {
-                setHWDecoderEnabled(hw, false)
-                if (hw && !directRender) addOption(":no-mediacodec-dr")   // copy path: green-fix on MiTV
-                addOption(":network-caching=1500")
-                addOption(":rtsp-tcp")
-                addOption(":drop-late-frames")
-                addOption(":skip-frames")
-                addOption(":avcodec-skiploopfilter=4")
+            // Build the player, surface and Media inside the stagger too, so the main thread never
+            // constructs N native players in one frame (only cell 0 starts immediately).
+            val startCell = Runnable {
+                if (!playing || gen != playGen) return@Runnable
+                val url = RtspUrls.playback(nvr, cam, Date(fromPseudo), Date(windowEnd))
+                val mp = MediaPlayer(PlayerEngine.get(this))
+                mp.attachViews(cells[i], null, false, false)
+                val media = Media(PlayerEngine.get(this), Uri.parse(url)).apply {
+                    setHWDecoderEnabled(hw, false)
+                    if (hw && !directRender) addOption(":no-mediacodec-dr")   // copy path: green-fix on MiTV
+                    addOption(":network-caching=1500")
+                    addOption(":avcodec-skiploopfilter=4")
+                }
+                mp.media = media
+                media.release()
+                players[i] = mp
+                runCatching { mp.play() }
             }
-            mp.media = media
-            media.release()
-            players[i] = mp
             // Stagger so we don't allocate every decoder in the same instant (crash-prone on weak TVs).
-            ui.postDelayed({ if (playing && gen == playGen) runCatching { mp.play() } }, i * 300L)
+            if (i == 0) startCell.run() else ui.postDelayed(startCell, i * 300L)
         }
         startUpdater()
     }

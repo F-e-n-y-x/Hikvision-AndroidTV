@@ -57,6 +57,8 @@ class CameraStream(
     // A single pending reconnect; replaced (not stacked) on each error so rapid error bursts
     // can't queue several overlapping reconnects that thrash the decoder.
     private var reconnectRunnable: Runnable? = null
+    // EncounteredError is followed by EndReached; without this both would double the backoff.
+    @Volatile private var reconnectPending = false
 
     // Liveness watchdog: LibVLC can silently stop delivering frames on a live RTSP stream without
     // ever firing EncounteredError/EndReached (a known demux stall), leaving a grid tile frozen
@@ -152,18 +154,12 @@ class CameraStream(
             if (hardware && !directRender) addOption(":no-mediacodec-dr")
             if (decodeThreads > 0) addOption(":avcodec-threads=$decodeThreads")
             addOption(":network-caching=$networkCachingMs")
-            addOption(":rtsp-tcp")
-            addOption(":clock-jitter=0")
-            addOption(":clock-synchro=0")
             if (highQuality) {
                 // Sharpest possible image (for zoom/detail): full in-loop deblocking, keep frames.
                 addOption(":avcodec-skiploopfilter=0")
             } else {
                 // Stay realtime on weak SoCs: drop late/extra frames and skip deblocking instead
                 // of juddering or building latency.
-                addOption(":drop-late-frames")
-                addOption(":skip-frames")
-                addOption(":avcodec-skip-frame=0")
                 addOption(":avcodec-skiploopfilter=4")
             }
             if (muted) addOption(":no-audio")
@@ -174,8 +170,10 @@ class CameraStream(
     }
 
     private fun scheduleReconnect() {
-        if (released || stopped) return
-        val delay = retryDelay
+        if (released || stopped || reconnectPending) return
+        reconnectPending = true
+        // Jitter so every tile doesn't hit the NVR's limited RTSP session slots in lockstep.
+        val delay = retryDelay + kotlin.random.Random.nextLong(0, 1500)
         retryDelay = (retryDelay * 2).coerceAtMost(8000L) // cap backoff at 8s
         main.post {
             // Drop any reconnect already pending so bursts of EncounteredError/EndReached
@@ -183,6 +181,7 @@ class CameraStream(
             reconnectRunnable?.let { main.removeCallbacks(it) }
             val r = Runnable {
                 reconnectRunnable = null
+                reconnectPending = false
                 // Re-check on the main thread: stop()/release() may have run during the backoff,
                 // so we must not stop()/play() a released player or a detached surface.
                 if (released || stopped) return@Runnable
@@ -224,9 +223,6 @@ class CameraStream(
         }
     }
 
-    /** Centred digital zoom (no pan). */
-    fun setZoom(factor: Float) = setTransform(if (factor <= 1f) 1f else factor, 0f, 0f)
-
     /** The video surface LibVLC attached to the layout — a TextureView or a SurfaceView. */
     private fun findVideoView(v: View?): View? {
         if (v is TextureView || v is SurfaceView) return v
@@ -234,21 +230,12 @@ class CameraStream(
         return null
     }
 
-    /** Stop drawing but keep the object reusable (used when a tile scrolls off-screen). */
-    fun stop() {
-        stopped = true
-        main.removeCallbacksAndMessages(null)
-        runCatching { player.stop() }
-        attachedLayout?.let { runCatching { player.detachViews() } }
-        attachedLayout = null
-    }
-
     fun release() {
         if (released) return
         released = true
-        main.removeCallbacksAndMessages(null)
         val p = player
         runCatching { p.setEventListener(null) }   // stop events first (safe on any thread)
+        main.removeCallbacksAndMessages(null)      // then drop posts, so no stale PLAYING slips in between
         runCatching { p.detachViews() }            // View work: must stay on the caller's (main) thread
         // Offload the blocking native teardown off the UI thread: stop() joins the decoder/demux
         // threads (slow under load) and release() frees natives. Doing this for N tiles at once from

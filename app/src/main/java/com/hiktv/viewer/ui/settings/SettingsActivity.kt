@@ -36,7 +36,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        store = NvrStore(this)
+        store = NvrStore.get(this)
 
         val nvr = Session.nvr
         binding.settingsSub.text = nvr?.let { "${it.host}  •  ${Session.cameras.size} cameras" } ?: ""
@@ -355,10 +355,12 @@ class SettingsActivity : AppCompatActivity() {
             // Off the main thread: PBKDF2 (now ~210k rounds) + AES + Downloads file write can exceed
             // the ANR budget on a weak TV CPU.
             val msg = withContext(Dispatchers.IO) {
-                val raw = store.exportJson()
-                val payload = if (pin == null) raw
-                    else com.hiktv.viewer.util.BackupCrypto.encrypt(raw, pin)
-                runCatching { com.hiktv.viewer.util.BackupManager.export(this@SettingsActivity, payload) }.fold(
+                runCatching {
+                    val raw = store.exportJson()
+                    val payload = if (pin == null) raw
+                        else com.hiktv.viewer.util.BackupCrypto.encrypt(raw, pin)
+                    com.hiktv.viewer.util.BackupManager.export(this@SettingsActivity, payload)
+                }.fold(
                     {
                         "Saved to $it" + (if (pin != null) "  (PIN-encrypted)" else "") +
                             "\n\nKeep this file — restore it after a reinstall to avoid re-entering everything."
@@ -418,11 +420,15 @@ class SettingsActivity : AppCompatActivity() {
                     .setTitle("Restoring…").setMessage("Applying settings…").setCancelable(false).show()
                 lifecycleScope.launch {
                     // EncryptedSharedPreferences rewrite (crypto + disk) off the main thread.
-                    val nvr = withContext(Dispatchers.IO) {
-                        runCatching { store.importJson(json) }
-                        store.load()
+                    val imported = withContext(Dispatchers.IO) {
+                        runCatching { store.importJson(json); store.load() }
                     }
-                    nvr?.let { Session.connect(it) }
+                    if (imported.isFailure) {
+                        progress.dismiss()
+                        toast("Restore failed — that isn't a valid backup. Settings unchanged.")
+                        return@launch
+                    }
+                    imported.getOrNull()?.let { Session.connect(it) }
                     Session.cameras = withContext(Dispatchers.IO) { store.loadCameras() }
                     Session.gridDirty = true
                     progress.dismiss()

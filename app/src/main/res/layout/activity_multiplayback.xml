@@ -66,7 +66,7 @@
         <com.hiktv.viewer.ui.playback.TimelineView
             android:id="@+id/timeline"
             android:layout_width="match_parent"
-            android:layout_height="34dp"
+            android:layout_height="56dp"
             android:layout_marginTop="3dp" />
     </LinearLayout>
 </LinearLayout>

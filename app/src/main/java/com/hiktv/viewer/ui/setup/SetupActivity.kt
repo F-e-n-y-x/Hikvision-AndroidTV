@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.hiktv.viewer.R
 import com.hiktv.viewer.core.Session
+import com.hiktv.viewer.data.isapi.IsapiClient
 import com.hiktv.viewer.data.model.Nvr
 import com.hiktv.viewer.data.store.NvrStore
 import com.hiktv.viewer.databinding.ActivitySetupBinding
@@ -53,8 +54,13 @@ class SetupActivity : AppCompatActivity() {
         uri ?: return@registerForActivityResult
         lifecycleScope.launch {
             val json = withContext(Dispatchers.IO) {
-                runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } }
-                    .getOrNull()
+                // Cap the read: a backup is a few KB, a huge file picked by mistake would OOM a weak box.
+                runCatching {
+                    contentResolver.openInputStream(uri)?.use {
+                        val b = it.readNBytes(MAX_BACKUP_BYTES + 1)
+                        if (b.size > MAX_BACKUP_BYTES) null else b.toString(Charsets.UTF_8)
+                    }
+                }.getOrNull()
             }
             if (json != null) doRestore(json)
             else setRestoreStatus("Couldn't read that file.")
@@ -65,7 +71,7 @@ class SetupActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivitySetupBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        store = NvrStore(this)
+        store = NvrStore.get(this)
 
         forceEdit = intent.getBooleanExtra(EXTRA_EDIT, false)
         if (store.hasNvr() && !forceEdit) {
@@ -141,17 +147,20 @@ class SetupActivity : AppCompatActivity() {
         binding.restoreStatus.visibility = View.GONE
         val container = binding.restoreList
         container.removeAllViews()
-        val files = findBackupFiles()
-        binding.restoreEmpty.visibility = if (files.isEmpty()) View.VISIBLE else View.GONE
+        lifecycleScope.launch {
+            val files = withContext(Dispatchers.IO) { findBackupFiles() }   // directory scan: off the UI thread
+            container.removeAllViews()
+            binding.restoreEmpty.visibility = if (files.isEmpty()) View.VISIBLE else View.GONE
 
-        val inflater = LayoutInflater.from(this)
-        files.forEachIndexed { i, f ->
-            val row = RowSettingBinding.inflate(inflater, container, false)
-            row.rowTitle.text = if (f.name == BackupManager.FILE_NAME) "Hik TV Viewer backup" else f.name
-            row.rowSubtitle.text = "${f.name}  ·  ${Formatter.formatShortFileSize(this, f.length())}"
-            row.root.setOnClickListener { confirmAndRestore(f) }
-            container.addView(row.root)
-            if (i == 0) row.root.post { row.root.requestFocus() }
+            val inflater = LayoutInflater.from(this@SetupActivity)
+            files.forEachIndexed { i, f ->
+                val row = RowSettingBinding.inflate(inflater, container, false)
+                row.rowTitle.text = if (f.name == BackupManager.FILE_NAME) "Hik TV Viewer backup" else f.name
+                row.rowSubtitle.text = "${f.name}  ·  ${Formatter.formatShortFileSize(this@SetupActivity, f.length())}"
+                row.root.setOnClickListener { confirmAndRestore(f) }
+                container.addView(row.root)
+                if (i == 0) row.root.post { row.root.requestFocus() }
+            }
         }
     }
 
@@ -160,17 +169,21 @@ class SetupActivity : AppCompatActivity() {
         val all = runCatching {
             dir?.listFiles { f -> f.isFile && f.canRead() && f.name.endsWith(".json", true) }?.toList()
         }.getOrNull().orEmpty()
-        // App's own backup first, then newest.
+        // App's own backup first, then newest (lastModified read once per file, not per comparison).
+        val modified = all.associateWith { it.lastModified() }
         return all.sortedWith(
             compareByDescending<File> { it.name == BackupManager.FILE_NAME }
-                .thenByDescending { it.lastModified() }
+                .thenByDescending { modified[it] }
         )
     }
 
     private fun confirmAndRestore(file: File) {
-        val json = runCatching { file.readText() }.getOrNull()
-        if (json.isNullOrBlank()) { setRestoreStatus("Couldn't read ${file.name}."); return }
-        doRestore(json)
+        lifecycleScope.launch {
+            val json = withContext(Dispatchers.IO) {
+                runCatching { if (file.length() > MAX_BACKUP_BYTES) null else file.readText() }.getOrNull()
+            }
+            if (json.isNullOrBlank()) setRestoreStatus("Couldn't read ${file.name}.") else doRestore(json)
+        }
     }
 
     private fun doRestore(text: String) {
@@ -179,15 +192,20 @@ class SetupActivity : AppCompatActivity() {
 
     private fun askPinThenRestore(encrypted: String) {
         val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "Backup PIN"
+            // Text, not number: Settings lets you set an alphanumeric passphrase.
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "Backup PIN / passphrase"
         }
         val dlg = MaterialAlertDialogBuilder(this)
             .setTitle("Encrypted backup")
             .setView(input)
             .setPositiveButton("Unlock") { _, _ ->
-                val plain = BackupCrypto.decrypt(encrypted, input.text.toString())
-                if (plain == null) setRestoreStatus("Wrong PIN — try again.") else applyRestore(plain)
+                val pin = input.text.toString()
+                lifecycleScope.launch {
+                    // PBKDF2 (210k iterations) takes seconds on a weak CPU: never on the UI thread.
+                    val plain = withContext(Dispatchers.Default) { BackupCrypto.decrypt(encrypted, pin) }
+                    if (plain == null) setRestoreStatus("Wrong PIN — try again.") else applyRestore(plain)
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -223,24 +241,20 @@ class SetupActivity : AppCompatActivity() {
     }
 
     private fun onConnect() {
-        val nvr = readForm() ?: run {
-            setStatus("Please fill host, username and password", error = true)
-            return
-        }
+        val nvr = readForm() ?: return
         setBusy(true)
         setStatus("Connecting to NVR…", error = false)
 
-        Session.connect(nvr)
         lifecycleScope.launch {
-            // testConnection() returns null on success; only substitute a message if connect()
-            // failed to create the client at all (don't turn a null-success into a false error).
-            val client = Session.isapi
-            val err = if (client == null) "Could not initialise connection" else client.testConnection()
+            // Test with a throwaway client: the live Session is only switched once the NVR answers,
+            // so a failed edit can't leave the app running on credentials that don't work.
+            val err = IsapiClient(nvr).testConnection()   // null = success
             if (err != null) {
                 setBusy(false)
                 setStatus(err, error = true)
                 return@launch
             }
+            Session.connect(nvr)
             store.save(nvr)
             Session.cameras = emptyList()
             Session.gridDirty = true
@@ -249,16 +263,31 @@ class SetupActivity : AppCompatActivity() {
         }
     }
 
+    /** Empty = [default]; otherwise must be a valid port, else shows [label] error and returns null. */
+    private fun port(raw: CharSequence?, default: Int, label: String): Int? {
+        val t = raw?.toString()?.trim().orEmpty()
+        if (t.isEmpty()) return default
+        return t.toIntOrNull()?.takeIf { it in 1..65535 }
+            ?: run { setStatus("$label port must be a number from 1 to 65535", error = true); null }
+    }
+
     private fun readForm(): Nvr? {
+        // Accept a pasted URL ("http://192.168.1.10/") as well as a bare host.
+        val host = binding.hostEdit.text.toString().trim()
+            .removePrefix("http://").removePrefix("https://").substringBefore('/').trim()
+        val httpPort = port(binding.httpPortEdit.text, 80, "HTTP") ?: return null
+        val rtspPort = port(binding.rtspPortEdit.text, 554, "RTSP") ?: return null
         val nvr = Nvr(
-            host = binding.hostEdit.text.toString().trim(),
-            httpPort = binding.httpPortEdit.text.toString().toIntOrNull() ?: 80,
-            rtspPort = binding.rtspPortEdit.text.toString().toIntOrNull() ?: 554,
+            host = host,
+            httpPort = httpPort,
+            rtspPort = rtspPort,
             username = binding.userEdit.text.toString().trim(),
             password = binding.passEdit.text.toString(),
             useHttps = binding.httpsSwitch.isChecked
         )
-        return if (nvr.isValid() && nvr.password.isNotEmpty()) nvr else null
+        if (nvr.isValid() && nvr.password.isNotEmpty()) return nvr
+        setStatus("Please fill host, username and password", error = true)
+        return null
     }
 
     private fun openGrid() {
@@ -283,5 +312,6 @@ class SetupActivity : AppCompatActivity() {
         private const val STEP_SERVER = 1
         private const val STEP_CREDS = 2
         private const val STEP_RESTORE = 3
+        private const val MAX_BACKUP_BYTES = 1_000_000
     }
 }

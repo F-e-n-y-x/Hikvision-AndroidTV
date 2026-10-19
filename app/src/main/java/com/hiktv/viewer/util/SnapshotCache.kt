@@ -14,6 +14,12 @@ object SnapshotCache {
     private fun file(context: Context, channel: Int) =
         File(context.cacheDir, "snap_$channel.jpg")
 
+    /** Milliseconds since the cached snapshot was written (Long.MAX_VALUE if none). */
+    fun ageMs(context: Context, channel: Int): Long {
+        val f = file(context, channel)
+        return if (f.exists()) System.currentTimeMillis() - f.lastModified() else Long.MAX_VALUE
+    }
+
     fun save(context: Context, channel: Int, bytes: ByteArray) {
         runCatching { file(context, channel).writeBytes(bytes) }
     }
@@ -23,13 +29,17 @@ object SnapshotCache {
         val f = file(context, channel)
         if (!f.exists()) return null
         return runCatching {
-            val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-            BitmapFactory.decodeFile(f.absolutePath, opts)
+            BitmapFactory.decodeFile(f.absolutePath, previewOpts())
         }.getOrNull()
     }
 
     fun decode(bytes: ByteArray): Bitmap? = runCatching {
-        val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, previewOpts())
     }.getOrNull()
+
+    // RGB_565 halves memory vs ARGB_8888; a muted preview doesn't need alpha or 24-bit colour.
+    private fun previewOpts() = BitmapFactory.Options().apply {
+        inSampleSize = 2
+        inPreferredConfig = Bitmap.Config.RGB_565
+    }
 }

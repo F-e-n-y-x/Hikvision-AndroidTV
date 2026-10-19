@@ -22,6 +22,7 @@ class TimelineView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
+    private val density = resources.displayMetrics.density
     private var windowStart = 0L
     private var windowEnd = 0L
     private var playhead = 0L
@@ -37,10 +38,30 @@ class TimelineView @JvmOverloads constructor(
     private val rectF = RectF()
     private val hm = SimpleDateFormat("h a", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
 
-    fun setWindow(startMs: Long, endMs: Long) { windowStart = startMs; windowEnd = endMs; invalidate() }
-    fun setSegments(list: List<IsapiClient.Segment>) { segments = list; invalidate() }
+    // Hour ticks (every 3h) and their labels, built once per window instead of on every draw.
+    private var ticks: List<Pair<Long, String>> = emptyList()
+
+    fun setWindow(startMs: Long, endMs: Long) {
+        windowStart = startMs; windowEnd = endMs
+        ticks = generateSequence(startMs) { it + 3 * 3600_000L }
+            .takeWhile { it <= endMs }
+            .map { it to hm.format(Date(it)) }.toList()
+        invalidate()
+    }
+
+    /** Merges overlapping/touching segments once so onDraw never paints the same span twice. */
+    fun setSegments(list: List<IsapiClient.Segment>) {
+        val merged = ArrayList<IsapiClient.Segment>()
+        for (s in list.sortedBy { it.startMs }) {
+            val last = merged.lastOrNull()
+            if (last != null && s.startMs <= last.endMs) {
+                if (s.endMs > last.endMs) merged[merged.size - 1] = IsapiClient.Segment(last.startMs, s.endMs)
+            } else merged += s
+        }
+        segments = merged
+        invalidate()
+    }
     fun setPlayhead(ms: Long) { playhead = ms.coerceIn(windowStart, windowEnd); invalidate() }
-    fun getPlayhead(): Long = playhead
 
     private fun xFor(ms: Long): Float {
         if (windowEnd <= windowStart) return 0f
@@ -60,12 +81,10 @@ class TimelineView @JvmOverloads constructor(
 
         // hour ticks + labels (every 3h)
         if (windowEnd > windowStart) {
-            var t = windowStart
-            while (t <= windowEnd) {
+            for ((t, text) in ticks) {
                 val x = xFor(t)
                 canvas.drawLine(x, barTop, x, barBottom, tick)
-                canvas.drawText(hm.format(Date(t)), x, height - dp(6f), label)
-                t += 3 * 3600_000L
+                canvas.drawText(text, x, height - dp(6f), label)
             }
         }
 
@@ -83,5 +102,5 @@ class TimelineView @JvmOverloads constructor(
         canvas.drawRect(px - dp(1.5f), barTop - dp(4f), px + dp(1.5f), barBottom + dp(4f), head)
     }
 
-    private fun dp(v: Float) = v * resources.displayMetrics.density
+    private fun dp(v: Float) = v * density
 }

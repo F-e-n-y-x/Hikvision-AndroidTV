@@ -65,16 +65,8 @@ class GridAdapter(
         )
         holder.binding.onlineDot.backgroundTintList = android.content.res.ColorStateList.valueOf(dot)
 
-        // Instant preview: paint the last cached snapshot immediately (before any stream).
-        val cached = SnapshotCache.load(context, cam.channel)
-        if (cached != null) {
-            holder.binding.preview.setImageBitmap(cached)
-            holder.binding.preview.alpha = if (cam.online) 1f else 0.35f
-            holder.binding.preview.visibility = View.VISIBLE
-        } else {
-            holder.binding.preview.setImageDrawable(null)
-            holder.binding.preview.visibility = View.GONE
-        }
+        // Instant preview: paint the last cached snapshot (decoded off the UI thread).
+        holder.loadCached(cam)
 
         holder.binding.root.setOnClickListener { if (cam.online) onOpen(cam) }
         holder.binding.root.setOnLongClickListener { onLongPress(); true }
@@ -117,6 +109,8 @@ class GridAdapter(
         var camera: Camera? = null
         private var stream: CameraStream? = null
         private var snapshotJob: kotlinx.coroutines.Job? = null
+        private var cacheJob: kotlinx.coroutines.Job? = null
+        private val pendingStart = Runnable { beginStream() }
 
         val clearMotion = Runnable { binding.motionBadge.visibility = View.GONE }
 
@@ -125,7 +119,29 @@ class GridAdapter(
             binding.root.isFocusableInTouchMode = false
         }
 
+        fun loadCached(cam: Camera) {
+            cacheJob?.cancel()
+            binding.preview.setImageDrawable(null)
+            binding.preview.visibility = View.GONE
+            cacheJob = scope.launch {
+                val bmp = withContext(Dispatchers.IO) { SnapshotCache.load(context, cam.channel) } ?: return@launch
+                if (camera?.channel != cam.channel) return@launch       // recycled to another camera
+                if (binding.statusText.visibility != View.VISIBLE) return@launch   // live already
+                binding.preview.setImageBitmap(bmp)
+                binding.preview.alpha = if (cam.online) 1f else 0.35f
+                binding.preview.visibility = View.VISIBLE
+            }
+        }
+
+        /** Stagger the whole start (player + surface + snapshot), not just play(), across tiles. */
         fun startStream() {
+            if (camera?.online != true) return
+            binding.root.removeCallbacks(pendingStart)
+            val delay = bindingAdapterPosition.coerceAtLeast(0) * 150L
+            if (delay <= 0) beginStream() else binding.root.postDelayed(pendingStart, delay)
+        }
+
+        private fun beginStream() {
             val cam = camera ?: return
             val nvr = Session.nvr ?: return
             if (!cam.online) return
@@ -147,28 +163,31 @@ class GridAdapter(
                 // Software-decoded tiles: ffmpeg would otherwise take ~cores+1 threads EACH
                 // (5 per tile on a quad-core → ~20 threads for a 4-up wall), which thrashes a weak
                 // TV CPU and badly delays the first frame. 2 per tile keeps the wall near core count.
-                decodeThreads = 2
+                decodeThreads = (Runtime.getRuntime().availableProcessors() /
+                    cameras.size.coerceAtLeast(1)).coerceIn(1, 2)
             ) { state ->
                 binding.statusText.post {
                     val playing = state == CameraStream.State.PLAYING
                     binding.statusText.visibility = if (playing) View.GONE else View.VISIBLE
-                    if (playing) binding.preview.visibility = View.GONE   // reveal live video
+                    if (playing) {                                          // reveal live video
+                        binding.preview.visibility = View.GONE
+                        binding.preview.setImageDrawable(null)              // free the bitmap on a 1 GB box
+                    }
                     if (state == CameraStream.State.ERROR) binding.statusText.text = "Reconnecting…"
                 }
-            }.also {
-                // Stagger startup so we don't allocate many decoders at the same instant.
-                val pos = bindingAdapterPosition.coerceAtLeast(0)
-                it.start(binding.videoLayout, pos * 150L)
-            }
+            }.also { it.start(binding.videoLayout) }
         }
 
         /** Pull a fresh JPEG snapshot, cache it, and show it until the live frame arrives. */
         private fun refreshSnapshot(channel: Int) {
             snapshotJob?.cancel()
+            if (SnapshotCache.ageMs(context, channel) < 60_000L) return    // cached preview is fresh enough
             snapshotJob = scope.launch {
-                val bytes = withContext(Dispatchers.IO) { Session.isapi?.snapshot(channel) } ?: return@launch
-                SnapshotCache.save(context, channel, bytes)
-                val bmp = withContext(Dispatchers.IO) { SnapshotCache.decode(bytes) } ?: return@launch
+                val bytes = withContext(Dispatchers.IO) { Session.isapi?.snapshot(channel, sub = true) } ?: return@launch
+                val bmp = withContext(Dispatchers.IO) {
+                    SnapshotCache.save(context, channel, bytes)
+                    SnapshotCache.decode(bytes)
+                } ?: return@launch
                 if (camera?.channel != channel) return@launch          // recycled to another camera
                 binding.preview.setImageBitmap(bmp)
                 binding.preview.alpha = 1f
@@ -179,6 +198,8 @@ class GridAdapter(
         }
 
         fun stopStream() {
+            binding.root.removeCallbacks(pendingStart)
+            cacheJob?.cancel()
             snapshotJob?.cancel()
             snapshotJob = null
             stream?.release()

@@ -45,7 +45,7 @@ class CameraSettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityCameraSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        store = NvrStore(this)
+        store = NvrStore.get(this)
 
         val channel = intent.getIntExtra(EXTRA_CHANNEL, -1)
         val cam = Session.cameraByChannel(channel)
@@ -175,9 +175,14 @@ class CameraSettingsActivity : AppCompatActivity() {
             .setTitle("EZVIZ").setMessage("Logging in & fetching your cameras…")
             .setCancelable(false).show()
         lifecycleScope.launch {
-            val cloud = EzvizCloud()
+            val cloud = EzvizCloud.forAccount(acct)
             val err = cloud.login(acct, pass)
-            if (err != null) { dlg.setMessage(err); dlg.setCancelable(true); return@launch }
+            if (err != null) {
+                dlg.dismiss()
+                MaterialAlertDialogBuilder(this@CameraSettingsActivity).setTitle("EZVIZ")
+                    .setMessage(err).setPositiveButton("Close", null).show()
+                return@launch
+            }
             val devices = cloud.listDevices()
             dlg.dismiss()
             if (devices.isEmpty()) {
@@ -281,7 +286,7 @@ class CameraSettingsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val msg = when {
                 serial != null && acct != null && pass != null -> {
-                    val cloud = EzvizCloud()
+                    val cloud = EzvizCloud.forAccount(acct)
                     val err = cloud.login(acct, pass)
                     if (err != null) "EZVIZ login failed: $err"
                     else "Login OK (serial $serial). " + cloud.diagnosePtz(serial)
@@ -319,7 +324,7 @@ class CameraSettingsActivity : AppCompatActivity() {
             if (bytes == null) { toast("Snapshot failed"); return@launch }
             val dir = getExternalFilesDir("Snapshots") ?: filesDir
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val file = File(dir, "${camera.name}_$stamp.jpg".replace(' ', '_'))
+            val file = File(dir, "${camera.name}_$stamp.jpg".replace(Regex("[^A-Za-z0-9._-]"), "_"))
             runCatching { file.writeBytes(bytes) }
                 .onSuccess { toast("Saved: ${file.name}") }
                 .onFailure { toast("Could not save snapshot") }

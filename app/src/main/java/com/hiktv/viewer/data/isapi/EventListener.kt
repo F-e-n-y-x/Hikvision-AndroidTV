@@ -1,6 +1,8 @@
 package com.hiktv.viewer.data.isapi
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -41,7 +43,11 @@ class EventListener(private val isapi: IsapiClient) {
             .url("${isapi.base()}/ISAPI/Event/notification/alertStream")
             .get().build()
 
-        isapi.httpClient().newCall(req).execute().use { resp ->
+        val call = isapi.httpClient().newCall(req)
+        // readUtf8Line blocks until bytes arrive; cancelling the flow must also cancel the socket,
+        // or it lingers until the next event / the read timeout.
+        val cancelCall = currentCoroutineContext()[Job]?.invokeOnCompletion { call.cancel() }
+        try { call.execute().use { resp ->
             // A 401/403 (account lacks alert permission) or 404 (different firmware path) returns a
             // non-null error page, not an event stream — reading it would loop forever emitting
             // nothing. Bail so the caller's retry/backoff can treat it as a failure.
@@ -57,7 +63,7 @@ class EventListener(private val isapi: IsapiClient) {
                     block.setLength(0)
                 }
             }
-        }
+        } } finally { cancelCall?.dispose() }
     }.flowOn(Dispatchers.IO)
 
     private fun parse(xml: String): CamEvent? {

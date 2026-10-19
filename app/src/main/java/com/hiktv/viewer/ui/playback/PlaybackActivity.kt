@@ -46,6 +46,8 @@ class PlaybackActivity : AppCompatActivity() {
     private var playhead = 0L
     private var playFrom = 0L
     private var playing = false
+    /** Playhead where playback was paused; OK resumes in place only if it hasn't been scrubbed since. */
+    private var pausedAt = -1L
 
     /** Wall-clock anchor: pseudo-time [playFrom] corresponds to elapsedRealtime [playAnchorElapsed]. */
     private var playAnchorElapsed = 0L
@@ -109,7 +111,9 @@ class PlaybackActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // Any control press wakes the bar back up and restarts the auto-minimize timer.
-        if (keyCode != KeyEvent.KEYCODE_BACK) revealBar()
+        val toggleKey = keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO
+        val barShown = binding.controlBar.visibility == View.VISIBLE   // read BEFORE revealBar() shows it
+        if (keyCode != KeyEvent.KEYCODE_BACK && !toggleKey) revealBar()
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> { scrub(-stepFor(event)); true }
             KeyEvent.KEYCODE_DPAD_RIGHT -> { scrub(stepFor(event)); true }
@@ -118,7 +122,7 @@ class PlaybackActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ->
                 { onOk(); true }
             KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO ->
-                { setBarMinimized(binding.controlBar.visibility == View.VISIBLE); true }
+                { if (barShown) setBarMinimized(true) else revealBar(); true }
             else -> super.onKeyDown(keyCode, event)
         }
     }
@@ -137,7 +141,7 @@ class PlaybackActivity : AppCompatActivity() {
     private fun onOk() {
         val p = player
         if (playing && p != null) { pausePlayback(); return }
-        if (!playing && p != null && playhead == playFrom) { resumePlayback(); return }
+        if (!playing && p != null && playhead == pausedAt) { resumePlayback(); return }
         startPlaybackFrom(playhead)
     }
 
@@ -147,24 +151,36 @@ class PlaybackActivity : AppCompatActivity() {
         binding.status.visibility = View.VISIBLE
         binding.status.text = "Loading…"
         val url = RtspUrls.playback(nvr, camera, Date(fromPseudo), Date(windowEnd))
-        val store = NvrStore(this)
+        val store = NvrStore.get(this)
         val hw = store.decoderMode != 2
         val directRender = store.directRender || com.hiktv.viewer.util.DeviceQuirks.isAmlogic
         val mp = MediaPlayer(PlayerEngine.get(this))
+        var anchored = false   // anchor the clock on the FIRST Playing only; resume fires Playing again
         // SurfaceView (hardware overlay) — much smoother for high-res H.265 recordings on weak TVs.
         mp.attachViews(binding.videoLayout, null, false, false)
         mp.setEventListener { e ->
             when (e.type) {
                 MediaPlayer.Event.Playing -> binding.status.post {
+                    if (player !== mp) return@post          // stale event from a replaced player
                     binding.status.visibility = View.GONE
-                    // Re-anchor the clock the moment frames actually start flowing.
-                    playFrom = fromPseudo
-                    playAnchorElapsed = SystemClock.elapsedRealtime()
+                    if (!anchored) {
+                        anchored = true
+                        // Re-anchor the clock the moment frames actually start flowing.
+                        playFrom = fromPseudo
+                        playAnchorElapsed = SystemClock.elapsedRealtime()
+                    }
                 }
-                MediaPlayer.Event.EncounteredError ->
-                    binding.status.post { binding.status.visibility = View.VISIBLE; binding.status.text = "No recording here" }
+                MediaPlayer.Event.EncounteredError -> binding.status.post {
+                    if (player !== mp) return@post
+                    releasePlayer()                         // don't keep a dead player and a running playhead
+                    binding.status.visibility = View.VISIBLE
+                    binding.status.text = "No recording here"
+                    revealBar()
+                }
                 MediaPlayer.Event.EndReached -> binding.status.post {
+                    if (player !== mp) return@post
                     pausePlayback()
+                    pausedAt = -1L                          // ended: OK must restart, not resume
                     binding.status.visibility = View.VISIBLE
                     binding.status.text = "End of recording — scrub back (◀) then OK"
                 }
@@ -178,11 +194,6 @@ class PlaybackActivity : AppCompatActivity() {
             // Recordings don't need low latency; a deep cache absorbs bursty RTSP delivery and
             // frame-dropping keeps the picture moving on weak SoCs instead of stuttering.
             addOption(":network-caching=1800")
-            addOption(":rtsp-tcp")
-            addOption(":clock-jitter=0")
-            addOption(":clock-synchro=0")
-            addOption(":drop-late-frames")
-            addOption(":skip-frames")
             addOption(":avcodec-skiploopfilter=4")
         }
         mp.media = media
@@ -206,6 +217,7 @@ class PlaybackActivity : AppCompatActivity() {
     private fun pausePlayback() {
         player?.pause()
         playing = false
+        pausedAt = playhead
         ui.removeCallbacks(advance)
         revealBar()
     }

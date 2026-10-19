@@ -11,6 +11,8 @@ import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.doOnLayout
+import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -65,7 +67,7 @@ class GridActivity : AppCompatActivity() {
         setContentView(binding.root)
         // Live camera wall: keep the TV screensaver from blanking it while it's on screen.
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        store = NvrStore(this)
+        store = NvrStore.get(this)
 
         if (!Session.isReady) { finishToSetup(); return }
 
@@ -99,7 +101,9 @@ class GridActivity : AppCompatActivity() {
         super.onStart()
         // Returning to the wall: restart the tile streams we released on leaving. (No-op on
         // first launch — tiles start themselves when their views attach.)
-        if (::adapter.isInitialized) adapter.startAllStreams()
+        // Wait for the SurfaceViews to be recreated (as FullscreenActivity does): restarting at once
+        // grabs an uninitialised buffer and shows a frozen green frame.
+        if (::adapter.isInitialized) binding.recycler.postDelayed(restoreStreams, 350)
     }
 
     override fun onStop() {
@@ -168,9 +172,18 @@ class GridActivity : AppCompatActivity() {
         adapter.hardware = store.decoderMode == 1 && !com.hiktv.viewer.util.DeviceQuirks.isAmlogic
         columns = columnsFor(cams.size)
         (binding.recycler.layoutManager as GridLayoutManager).spanCount = columns
-        adapter.submit(cams)
-        sizeTilesToFill(cams.size)
-        binding.recycler.post { binding.recycler.requestFocus() }
+        // Size the tiles first, then submit once: submitting before the height is known made every
+        // tile build its stream, get torn down by a second notify, and build it again.
+        binding.recycler.doOnLayout {
+            // Keep focus on the same tile across a refresh (notifyDataSetChanged drops it).
+            val focused = binding.recycler.focusedChild?.let { binding.recycler.getChildAdapterPosition(it) } ?: 0
+            adapter.tileHeight = tileHeightFor(cams.size)
+            adapter.submit(cams)
+            binding.recycler.doOnNextLayout {
+                (binding.recycler.findViewHolderForAdapterPosition(focused.coerceAtLeast(0))?.itemView
+                    ?: binding.recycler).requestFocus()
+            }
+        }
     }
 
     /** Honor the user's layout preference; otherwise a square-ish auto grid. */
@@ -185,31 +198,30 @@ class GridActivity : AppCompatActivity() {
     }
 
     /** Divide the visible height exactly across rows (account for padding + 2dp tile margins). */
-    private fun sizeTilesToFill(count: Int) {
-        binding.recycler.post {
-            val rows = ceil(count / columns.toDouble()).toInt().coerceAtLeast(1)
-            val h = binding.recycler.height - binding.recycler.paddingTop - binding.recycler.paddingBottom
-            if (h > 0) {
-                val rowMarginPx = (2 * resources.displayMetrics.density).toInt()  // 1dp top + 1dp bottom
-                adapter.tileHeight = ((h / rows) - rowMarginPx).coerceAtLeast(100)
-                adapter.notifyDataSetChanged()
-            }
-        }
+    private fun tileHeightFor(count: Int): Int {
+        val rows = ceil(count / columns.toDouble()).toInt().coerceAtLeast(1)
+        val h = binding.recycler.height - binding.recycler.paddingTop - binding.recycler.paddingBottom
+        if (h <= 0) return 0
+        val rowMarginPx = (2 * resources.displayMetrics.density).toInt()  // 1dp top + 1dp bottom
+        return ((h / rows) - rowMarginPx).coerceAtLeast(100)
     }
 
     private fun listenForMotion() {
         val isapi = Session.isapi ?: return
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
+                var wait = 3000L
                 while (true) {
                     try {
                         EventListener(isapi).events()
-                            .collect { event -> onCameraEvent(event) }
+                            .collect { event -> wait = 3000L; onCameraEvent(event) }
                     } catch (c: CancellationException) {
                         throw c
                     } catch (_: Exception) {
                     }
-                    delay(3000)
+                    // Back off while the NVR keeps refusing (401/404 never recovers by hammering).
+                    delay(wait)
+                    wait = (wait * 2).coerceAtMost(60_000L)
                 }
             }
         }

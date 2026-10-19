@@ -24,6 +24,16 @@ import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 
+// Parsed per channel/segment in loops: compile once, not per iteration.
+private val ID_RE = Regex("<id>\\s*(\\d+)\\s*</id>")
+private val START_RE = Regex("<startTime>(.*?)</startTime>")
+private val END_RE = Regex("<endTime>(.*?)</endTime>")
+
+// SimpleDateFormat isn't thread-safe and searches run on IO threads, so one per thread.
+private val utcParser = ThreadLocal.withInitial {
+    SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+}
+
 /**
  * Thin Hikvision ISAPI wrapper. One instance per NVR. All network work is on Dispatchers.IO.
  *
@@ -60,8 +70,9 @@ class IsapiClient(private val nvr: Nvr) {
     suspend fun discoverCameras(): List<Camera> = withContext(Dispatchers.IO) {
         val proxyCams = runCatching { parseChannels(get("/ISAPI/ContentMgmt/InputProxy/channels")) }
             .getOrDefault(emptyList())
-        val onlineSet = runCatching { streamingChannelSet(get("/ISAPI/Streaming/channels")) }
-            .getOrDefault(emptySet())
+        // Fetched once: it feeds both the online set and the no-InputProxy fallback below.
+        val streamingXml = runCatching { get("/ISAPI/Streaming/channels") }.getOrNull()
+        val onlineSet = streamingXml?.let { runCatching { streamingChannelSet(it) }.getOrNull() } ?: emptySet()
 
         if (proxyCams.isNotEmpty()) {
             return@withContext proxyCams
@@ -69,7 +80,7 @@ class IsapiClient(private val nvr: Nvr) {
                 .sortedBy { it.channel }
         }
 
-        runCatching { parseStreamingChannels(get("/ISAPI/Streaming/channels")) }
+        runCatching { parseStreamingChannels(streamingXml ?: error("no streaming list")) }
             .getOrDefault(emptyList())
             .let { if (it.isNotEmpty()) return@withContext it }
 
@@ -95,7 +106,7 @@ class IsapiClient(private val nvr: Nvr) {
         val blocks = Regex("<InputProxyChannel\\b[^>]*>(.*?)</InputProxyChannel>", RegexOption.DOT_MATCHES_ALL)
             .findAll(xml).map { it.groupValues[1] }
         for (block in blocks) {
-            val id = Regex("<id>\\s*(\\d+)\\s*</id>").find(block)?.groupValues?.get(1)?.toIntOrNull()
+            val id = ID_RE.find(block)?.groupValues?.get(1)?.toIntOrNull()
             if (id == channel) {
                 return@withContext Regex("<ipAddress>(.*?)</ipAddress>").find(block)
                     ?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
@@ -114,7 +125,7 @@ class IsapiClient(private val nvr: Nvr) {
         val blocks = Regex("<InputProxyChannel\\b[^>]*>(.*?)</InputProxyChannel>", RegexOption.DOT_MATCHES_ALL)
             .findAll(xml).map { it.groupValues[1] }
         for (block in blocks) {
-            val id = Regex("<id>\\s*(\\d+)\\s*</id>").find(block)?.groupValues?.get(1)?.toIntOrNull()
+            val id = ID_RE.find(block)?.groupValues?.get(1)?.toIntOrNull()
             if (id == channel) {
                 val full = Regex("<serialNumber>(.*?)</serialNumber>").find(block)
                     ?.groupValues?.get(1)?.trim().orEmpty()
@@ -127,7 +138,7 @@ class IsapiClient(private val nvr: Nvr) {
     /** Channel numbers that currently have a live stream (= online), from Streaming/channels. */
     private fun streamingChannelSet(xml: String): Set<Int> {
         val set = LinkedHashSet<Int>()
-        Regex("<id>\\s*(\\d+)\\s*</id>").findAll(xml).forEach {
+        ID_RE.findAll(xml).forEach {
             val rawId = it.groupValues[1].toIntOrNull() ?: return@forEach
             set += if (rawId >= 100) rawId / 100 else rawId
         }
@@ -164,7 +175,7 @@ class IsapiClient(private val nvr: Nvr) {
         val blocks = Regex("<StreamingChannel\\b[^>]*>(.*?)</StreamingChannel>", RegexOption.DOT_MATCHES_ALL)
             .findAll(xml).map { it.groupValues[1] }
         for (block in blocks) {
-            val rawId = Regex("<id>\\s*(\\d+)\\s*</id>").find(block)?.groupValues?.get(1)?.toIntOrNull()
+            val rawId = ID_RE.find(block)?.groupValues?.get(1)?.toIntOrNull()
                 ?: continue
             // id = channel*100 + streamType. Recover the channel number.
             val channel = if (rawId >= 100) rawId / 100 else rawId
@@ -187,7 +198,7 @@ class IsapiClient(private val nvr: Nvr) {
         val blocks = Regex("<([A-Za-z]*Channel)\\b[^>]*>(.*?)</\\1>", RegexOption.DOT_MATCHES_ALL)
             .findAll(xml).map { it.groupValues[2] }
         for (block in blocks) {
-            val id = Regex("<id>\\s*(\\d+)\\s*</id>").find(block)?.groupValues?.get(1)?.toIntOrNull()
+            val id = ID_RE.find(block)?.groupValues?.get(1)?.toIntOrNull()
                 ?: continue
             val name = Regex("<(?:name|channelName)>(.*?)</(?:name|channelName)>").find(block)
                 ?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
@@ -305,10 +316,17 @@ class IsapiClient(private val nvr: Nvr) {
 
     // ---- Snapshot ----------------------------------------------------------
 
-    /** JPEG of the current frame for a channel, or null on failure. */
-    suspend fun snapshot(channel: Int): ByteArray? = withContext(Dispatchers.IO) {
-        val code = channel * 100 + 1
-        runCatching {
+    /**
+     * JPEG of the current frame for a channel, or null on failure. [sub] asks for the small
+     * sub-stream picture (grid previews), falling back to the main stream if the NVR lacks it.
+     */
+    suspend fun snapshot(channel: Int, sub: Boolean = false): ByteArray? = withContext(Dispatchers.IO) {
+        if (sub) snapshotStream(channel * 100 + 2)?.let { return@withContext it }
+        snapshotStream(channel * 100 + 1)
+    }
+
+    private fun snapshotStream(code: Int): ByteArray? {
+        return runCatching {
             val req = Request.Builder()
                 .url("${nvr.httpBase}/ISAPI/Streaming/channels/$code/picture")
                 .get().build()
@@ -352,8 +370,8 @@ class IsapiClient(private val nvr: Nvr) {
             .findAll(xml).map { it.groupValues[1] }
         val out = ArrayList<Segment>()
         for (item in items) {
-            val s = Regex("<startTime>(.*?)</startTime>").find(item)?.groupValues?.get(1)?.let(::parseHikTime)
-            val e = Regex("<endTime>(.*?)</endTime>").find(item)?.groupValues?.get(1)?.let(::parseHikTime)
+            val s = START_RE.find(item)?.groupValues?.get(1)?.let(::parseHikTime)
+            val e = END_RE.find(item)?.groupValues?.get(1)?.let(::parseHikTime)
             if (s != null && e != null && e > s) out += Segment(s, e)
         }
         return out.sortedBy { it.startMs }
@@ -365,9 +383,7 @@ class IsapiClient(private val nvr: Nvr) {
         if (s.length < 19) return null
         val dt = s.substring(0, 19)
         val asUtc = runCatching {
-            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
-                .apply { timeZone = TimeZone.getTimeZone("UTC") }
-                .parse(dt)?.time
+            utcParser.get()!!.parse(dt)?.time
         }.getOrNull() ?: return null
         val tz = s.substring(19)
         val offsetMs = when {

@@ -153,8 +153,22 @@ class EzvizCloud(initialApiDomain: String = "apiieu.ezvizlife.com") {
     private fun int(json: String, key: String) =
         Regex("\"$key\"\\s*:\\s*(\\d+)").find(json)?.groupValues?.get(1)?.toIntOrNull()
 
-    private companion object {
+    companion object {
         // Stable per-app client id; EZVIZ just needs a consistent 32-hex device code.
-        const val FEATURE_CODE = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
+        private const val FEATURE_CODE = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
+
+        private var shared: EzvizCloud? = null
+        private var sharedAccount: String? = null
+
+        /**
+         * One client (and login session) per account for the whole app: building a new one per
+         * screen meant a fresh OkHttp pool and a full EZVIZ login on every entry, which risks
+         * rate-limiting. A different account gets a fresh client.
+         */
+        @Synchronized
+        fun forAccount(account: String): EzvizCloud {
+            if (sharedAccount != account) { shared = EzvizCloud(); sharedAccount = account }
+            return shared!!
+        }
     }
 }

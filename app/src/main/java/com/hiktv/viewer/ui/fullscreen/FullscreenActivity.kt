@@ -26,6 +26,7 @@ import com.hiktv.viewer.data.ptz.EzvizCloudPtzController
 import com.hiktv.viewer.data.ptz.IsapiPtzController
 import com.hiktv.viewer.data.ptz.OnvifPtzController
 import com.hiktv.viewer.data.ptz.PtzController
+import com.hiktv.viewer.data.ptz.serialized
 import com.hiktv.viewer.data.store.NvrStore
 import com.hiktv.viewer.databinding.ActivityFullscreenBinding
 import com.hiktv.viewer.player.CameraStream
@@ -109,7 +110,7 @@ class FullscreenActivity : AppCompatActivity() {
 
     private fun startStream() {
         val nvr = Session.nvr ?: return
-        val store = NvrStore(this)
+        val store = NvrStore.get(this)
         val url = RtspUrls.live(nvr, camera, sub = false)
         val hw = store.decoderMode != 2     // 2 = Software-only
         stream?.release()
@@ -258,7 +259,7 @@ class FullscreenActivity : AppCompatActivity() {
     }
 
     private fun resolveController() {
-        val store = NvrStore(this)
+        val store = NvrStore.get(this)
         val direct = store.loadDirect(camera.channel)
         val serial = store.ezvizSerial(camera.channel)
         val acct = store.ezvizAccount
@@ -266,12 +267,12 @@ class FullscreenActivity : AppCompatActivity() {
         isEzviz = serial != null && acct != null && pass != null
         hasDirect = direct != null || isEzviz
         ptz = when {
-            isEzviz -> EzvizCloudPtzController(EzvizCloud(), acct!!, pass!!, serial!!)
+            isEzviz -> EzvizCloudPtzController(EzvizCloud.forAccount(acct!!), acct, pass!!, serial!!)
             direct != null && store.loadDirectOnvif(camera.channel) ->
                 OnvifPtzController(OnvifPtz(direct.host, direct.httpPort, direct.username, direct.password))
             direct != null -> IsapiPtzController(IsapiClient(direct), channel = 1)
             else -> Session.isapi?.let { IsapiPtzController(it, camera.channel) }
-        }
+        }?.serialized()
         // Reset PTZ availability too: this activity is reused across cameras, so a leftover
         // ptzSupported=true from a previous PTZ camera would wrongly enter PTZ mode on a camera
         // that has none (detectPtz only ever promotes to PTZ, never demotes).
@@ -507,7 +508,7 @@ class FullscreenActivity : AppCompatActivity() {
             if (bytes == null) { toast("Snapshot failed"); return@launch }
             val dir = getExternalFilesDir("Snapshots") ?: filesDir
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val file = File(dir, "${camera.name}_$stamp.jpg".replace(' ', '_'))
+            val file = File(dir, "${camera.name}_$stamp.jpg".replace(Regex("[^A-Za-z0-9._-]"), "_"))
             runCatching { file.writeBytes(bytes) }
                 .onSuccess { toast("Saved: ${file.name}") }
                 .onFailure { toast("Could not save snapshot") }

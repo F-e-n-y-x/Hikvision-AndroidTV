@@ -48,12 +48,4 @@ object PlayerEngine {
 
     private fun isDebuggable(context: Context): Boolean =
         (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-
-    /** Call on full app shutdown if desired. Normally we keep the engine alive. */
-    fun release() {
-        synchronized(this) {
-            libVlc?.release()
-            libVlc = null
-        }
-    }
 }

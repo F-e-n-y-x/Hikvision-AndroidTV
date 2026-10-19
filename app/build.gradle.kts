@@ -101,11 +101,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.github.rburgst:okhttp-digest:3.1.1")
 
-    // Encrypted credential storage (live). security-crypto is deprecated upstream; the
-    // DataStore + Tink deps below are the SCAFFOLD for its eventual replacement (see
-    // SecureCredentialStore) and are inert until NvrStore.USE_DATASTORE is flipped.
+    // Encrypted credential storage. security-crypto is deprecated upstream; tink is pinned newer
+    // than the 1.8 it pulls in transitively.
     implementation("androidx.security:security-crypto:1.1.0")
-    implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("com.google.crypto.tink:tink-android:1.15.0")
 
     // Video engine: hardware-accelerated, H.264/H.265, RTSP, low-latency tunable.
