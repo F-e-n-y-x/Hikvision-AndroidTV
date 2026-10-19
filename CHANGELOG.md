@@ -4,6 +4,40 @@ All notable changes to Hik TV Viewer. Newest first.
 
 ---
 
+## 2.5.0 — Faster start, safer backups, better playback
+
+**versionCode 22**
+
+### ⚡ Faster / lighter (low-end TVs)
+
+- **The encrypted credential store is opened once**, not on every screen and every camera switch, and it is warmed up in the background at launch. If the Keystore ever gets out of sync the store resets instead of crash-looping.
+- **The camera wall no longer builds every stream twice** at start-up; tiles are sized first, then filled once, and started one after another.
+- **Tile previews are lighter**: sub-stream snapshots, half the memory, decoded and saved off the UI thread, and not re-fetched if fresh.
+- **Synced playback** searches all cameras in parallel and builds its players one at a time.
+- **Smoother timeline** (no per-frame allocation), a baseline profile for faster cold start, and tiles show video from the first decoded frame instead of flashing black.
+
+### 🐛 Fixed
+
+- **Restoring a bad backup no longer wipes your settings** — it is validated first and reports the failure.
+- **Backup encryption no longer crashes on Android 6-7** (API 23-25).
+- **Setup restore** accepts passphrases (not just digits) and no longer freezes the TV while decrypting.
+- **PTZ** can no longer miss a STOP and keep panning.
+- **Playback**: resume no longer jumps back to where you started, an error no longer leaves a dead player running, the MENU key toggles the bar, and the multi-camera timeline is tall enough to see recordings.
+- **Setup** only switches to new credentials once the NVR accepts them, and validates host and ports.
+- Returning to the wall waits for the video surfaces (no green frame), keeps focus on the same tile, and motion alerts back off instead of retrying every 3 s.
+- Snapshot names with `/` no longer fail; the EZVIZ login error dialog has a Close button.
+
+### ⏪ Playback
+
+- **Busy days are no longer cut off at 200 recordings** — results are paged.
+- **Scrub past midnight to move to the previous or next day** (up to 90 days back), in single and synced playback.
+
+### 🔧 Under the hood
+
+Removed the unused DataStore scaffold and dead code; trimmed unused permissions (`WAKE_LOCK`, `ACCESS_NETWORK_STATE`); docs refreshed. Update in place — your NVR and settings are kept.
+
+---
+
 ## 2.4.0 — Crash fixes on Amlogic, much faster start, modern toolchain
 
 **versionCode 21** · Verified on a Mi Box 4 (Amlogic S905) and a Xiaomi MiTV (MediaTek m7632).
