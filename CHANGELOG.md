@@ -4,6 +4,14 @@ All notable changes to Hik TV Viewer. Newest first.
 
 ---
 
+## 2.6.1 — Deep links work from adb and any app
+
+**versionCode 25**
+
+- **`hiktv://` links no longer need a signing-key match.** Any app can open them, and so can `adb shell am start -a android.intent.action.VIEW -d hiktv://camera/3` — so scripts and agents driving the TV over adb work. Links only open screens; nothing is read back.
+
+---
+
 ## 2.6.0 — Open a camera from another app
 
 **versionCode 24**

@@ -18,9 +18,9 @@ import com.hiktv.viewer.ui.setup.SetupActivity
  *   hiktv://playback/<channel>  recordings for that camera
  *   hiktv://grid                the camera wall
  *
- * Only callers holding the signature-level CONTROL permission (i.e. apps signed with the same key)
- * can start it — see the manifest. The URI is still treated as untrusted input: an unknown host or
- * a channel that isn't one of this NVR's cameras falls back to the wall.
+ * Open to any caller on purpose (home apps signed with another key, `adb shell am start`), so the
+ * URI is treated as untrusted input: an unknown host or a channel that isn't one of this NVR's
+ * cameras falls back to the wall, and nothing is read back out — it only opens screens.
  */
 class LinkActivity : Activity() {
 

@@ -7,7 +7,7 @@
 Opens straight to a wall of all your cameras (Hikvision **and** EZVIZ on one NVR).
 Built to stay smooth on cheap TV sticks, driven entirely by a normal remote. 📱
 
-![version](https://img.shields.io/badge/version-2.6.0-2D7DF6)
+![version](https://img.shields.io/badge/version-2.6.1-2D7DF6)
 ![platform](https://img.shields.io/badge/Android%20TV-6%2B-3DDC84?logo=androidtv&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
 ![LibVLC](https://img.shields.io/badge/video-LibVLC%203.7.5-FF8800)
@@ -95,7 +95,7 @@ Opens **instantly, right on the live picture** — it reuses the stream already 
 | `hiktv://playback/<channel>` | that camera's recordings |
 | `hiktv://grid` | the camera wall |
 
-The caller must declare `<uses-permission android:name="com.hiktv.viewer.permission.CONTROL" />` and be **signed with the same key** as this app (the permission is signature-level, so other apps can't drive your NVR viewer). Unknown links or channels fall back to the wall. Example: `startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("hiktv://camera/3")))`.
+Any app can call them — no permission, no signing-key match — and so can adb: `adb shell am start -a android.intent.action.VIEW -d hiktv://camera/3`. Links only open screens (nothing is read back); unknown links or channels fall back to the wall. From code: `startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("hiktv://camera/3")))`.
 
 **⏪ Playback** — **◀ ▶** scrub · **▲ ▼** jump ±1h · scrub past midnight to move to the previous or next day (up to 90 days back) · **OK** play/pause · **Back** exit.
 
