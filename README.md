@@ -87,6 +87,16 @@ Opens **instantly, right on the live picture** — it reuses the stream already 
 | **▲▼ / Vol** | Zoom in-out · **D-pad** pans the image (Pan) or moves the camera (PTZ) |
 | **Back** | Close the overlay (back to plain fullscreen) |
 
+**🔗 Open from another app** — a launcher or home app can jump straight into a camera:
+
+| Link | Opens |
+|---|---|
+| `hiktv://camera/<channel>` | live fullscreen for that camera |
+| `hiktv://playback/<channel>` | that camera's recordings |
+| `hiktv://grid` | the camera wall |
+
+The caller must declare `<uses-permission android:name="com.hiktv.viewer.permission.CONTROL" />` and be **signed with the same key** as this app (the permission is signature-level, so other apps can't drive your NVR viewer). Unknown links or channels fall back to the wall. Example: `startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("hiktv://camera/3")))`.
+
 **⏪ Playback** — **◀ ▶** scrub · **▲ ▼** jump ±1h · scrub past midnight to move to the previous or next day (up to 90 days back) · **OK** play/pause · **Back** exit.
 
 ---

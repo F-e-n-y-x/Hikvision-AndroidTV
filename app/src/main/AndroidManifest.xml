@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Lets apps signed with the same key open a camera / playback / the wall via hiktv:// links. -->
+    <permission
+        android:name="com.hiktv.viewer.permission.CONTROL"
+        android:protectionLevel="signature" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Read/write the settings backup file in shared Downloads so a fresh install can restore it. -->
@@ -92,6 +97,20 @@
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".ui.link.LinkActivity"
+            android:exported="true"
+            android:permission="com.hiktv.viewer.permission.CONTROL"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="hiktv" />
+            </intent-filter>
+        </activity>
 
     </application>
 </manifest>
