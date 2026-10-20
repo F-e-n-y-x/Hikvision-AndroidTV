@@ -9,6 +9,7 @@ All notable changes to Hik TV Viewer. Newest first.
 **versionCode 23**
 
 - **Fixed a black / empty camera wall in 2.5.0.** When the NVR's cameras were already cached (every launch after the first), the wall was filled from inside a layout callback, which Android drops — so no tiles appeared. The wall is now filled right after layout. **If 2.5.0 shows a black screen, update to 2.5.1.**
+- **Cleaner app icon on the TV home screen** — removed the thin light square outline that was baked into the banner and launcher icons; it is now solid brand lime with the logo.
 
 ---
 
