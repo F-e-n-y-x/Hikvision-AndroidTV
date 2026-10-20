@@ -4,6 +4,15 @@ All notable changes to Hik TV Viewer. Newest first.
 
 ---
 
+## 2.6.0 — Open a camera from another app
+
+**versionCode 24**
+
+- **Deep links for a home screen or other apps:** `hiktv://camera/<channel>` (live fullscreen), `hiktv://playback/<channel>` (recordings) and `hiktv://grid` (the camera wall). Unknown links or channels fall back to the wall.
+- **Protected:** the links need the signature-level `com.hiktv.viewer.permission.CONTROL`, so only apps signed with the same key can use them — other apps on the TV can't drive your NVR viewer. See the README for how a home app calls them.
+
+---
+
 ## 2.5.1 — Fix: empty camera wall on launch
 
 **versionCode 23**
