@@ -4,6 +4,14 @@ All notable changes to Hik TV Viewer. Newest first.
 
 ---
 
+## 2.5.1 — Fix: empty camera wall on launch
+
+**versionCode 23**
+
+- **Fixed a black / empty camera wall in 2.5.0.** When the NVR's cameras were already cached (every launch after the first), the wall was filled from inside a layout callback, which Android drops — so no tiles appeared. The wall is now filled right after layout. **If 2.5.0 shows a black screen, update to 2.5.1.**
+
+---
+
 ## 2.5.0 — Faster start, safer backups, better playback
 
 **versionCode 22**

@@ -7,7 +7,7 @@
 Opens straight to a wall of all your cameras (Hikvision **and** EZVIZ on one NVR).
 Built to stay smooth on cheap TV sticks, driven entirely by a normal remote. 📱
 
-![version](https://img.shields.io/badge/version-2.5.0-2D7DF6)
+![version](https://img.shields.io/badge/version-2.5.1-2D7DF6)
 ![platform](https://img.shields.io/badge/Android%20TV-6%2B-3DDC84?logo=androidtv&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
 ![LibVLC](https://img.shields.io/badge/video-LibVLC%203.7.5-FF8800)

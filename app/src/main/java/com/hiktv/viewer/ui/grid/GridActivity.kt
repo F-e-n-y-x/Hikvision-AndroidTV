@@ -175,13 +175,17 @@ class GridActivity : AppCompatActivity() {
         // Size the tiles first, then submit once: submitting before the height is known made every
         // tile build its stream, get torn down by a second notify, and build it again.
         binding.recycler.doOnLayout {
-            // Keep focus on the same tile across a refresh (notifyDataSetChanged drops it).
-            val focused = binding.recycler.focusedChild?.let { binding.recycler.getChildAdapterPosition(it) } ?: 0
-            adapter.tileHeight = tileHeightFor(cams.size)
-            adapter.submit(cams)
-            binding.recycler.doOnNextLayout {
-                (binding.recycler.findViewHolderForAdapterPosition(focused.coerceAtLeast(0))?.itemView
-                    ?: binding.recycler).requestFocus()
+            // post{}: changing the adapter from inside the layout callback loses its requestLayout()
+            // (View.layout() clears the force-layout flag after listeners run), leaving the list empty.
+            binding.recycler.post {
+                // Keep focus on the same tile across a refresh (notifyDataSetChanged drops it).
+                val focused = binding.recycler.focusedChild?.let { binding.recycler.getChildAdapterPosition(it) } ?: 0
+                adapter.tileHeight = tileHeightFor(cams.size)
+                adapter.submit(cams)
+                binding.recycler.doOnNextLayout {
+                    (binding.recycler.findViewHolderForAdapterPosition(focused.coerceAtLeast(0))?.itemView
+                        ?: binding.recycler).requestFocus()
+                }
             }
         }
     }
